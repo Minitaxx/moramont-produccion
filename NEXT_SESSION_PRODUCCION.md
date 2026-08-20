@@ -22,3 +22,14 @@ El módulo registra los procesos de fabricación por producto, los materiales co
 4. Iniciar el entorno de desarrollo con `npm run dev`.
 
 No se han ejecutado migraciones de base de datos.
+## Sesion 2026-08-20
+
+Que se hizo:
+- Inicializacion completa del repositorio
+- Schema Prisma con stubs y modelos de produccion
+- Migracion inicial aplicada a PostgreSQL
+- Next.js 16.2.9 corriendo en localhost:3000/produccion
+- Primer commit realizado
+
+Commits:
+- 439bbd3 init: estructura base del modulo de produccion - schema, nextjs, prisma, stubs
