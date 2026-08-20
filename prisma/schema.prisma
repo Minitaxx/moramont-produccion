@@ -7,52 +7,62 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// STUBS: Modelos del sistema principal (se reemplazan al integrar)
+// ============================================================
+// MODELOS DEL SISTEMA PRINCIPAL (referencia, no modificar)
+// ============================================================
+
 model ProductCatalog {
-  id                     String                 @id @default(cuid())
-  code                   String                 @unique
-  name                   String
-  productType            String
-  geometryType           String                 @default("rectangular")
-  fixedPrice             Decimal?               @db.Decimal(10, 4)
-  canBeAccessory         Boolean                @default(false)
-  active                 Boolean                @default(true)
-  createdAt              DateTime               @default(now())
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  productType    String
+  geometryType   String   @default("rectangular")
+  fixedPrice     Decimal? @db.Decimal(10, 4)
+  canBeAccessory Boolean  @default(false)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
   manufacturingProcesses ManufacturingProcess[] @relation("ProductManufacturingProcesses")
 
   @@map("product_catalog")
 }
 
 model Material {
-  id               String            @id @default(cuid())
-  name             String            @unique
+  id   String @id @default(cuid())
+  name String @unique
+
   processMaterials ProcessMaterial[]
 
   @@map("materials")
 }
 
+// ============================================================
 // MODELOS NUEVOS DEL MÓDULO DE PRODUCCIÓN
-model Machine {
-  id        String                 @id @default(cuid())
-  code      String                 @unique
-  name      String
-  active    Boolean                @default(true)
-  createdAt DateTime               @default(now())
-
-  processes ManufacturingProcess[]
-
-  @@map("machines")
-}
+// ============================================================
 
 model ProcessType {
-  id        String                 @id @default(cuid())
-  code      String                 @unique
-  name      String
-  createdAt DateTime               @default(now())
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
 
   processes ManufacturingProcess[]
 
   @@map("process_types")
+}
+
+model Machine {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  processes ManufacturingProcess[]
+
+  @@map("machines")
 }
 
 model ManufacturingProcess {
@@ -64,6 +74,7 @@ model ManufacturingProcess {
   order            Int
   machineId        String?
   machine          Machine?       @relation(fields: [machineId], references: [id])
+  estimatedMinutes Decimal?       @db.Decimal(10, 2)
 
   materials ProcessMaterial[]
 
@@ -77,8 +88,8 @@ model ProcessMaterial {
   process    ManufacturingProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
   materialId String
   material   Material             @relation(fields: [materialId], references: [id])
-  quantity   Decimal?             @db.Decimal(10, 4)
-  unit       String?
+  quantity   Decimal              @db.Decimal(10, 4)
+  unit       String
 
   @@map("process_materials")
 }
