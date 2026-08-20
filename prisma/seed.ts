@@ -1,53 +1,37 @@
-import { prisma } from '../src/lib/prisma'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 async function main() {
   const processTypes = [
-    { code: 'CORTE', name: 'Corte' },
-    { code: 'ENSAMBLE', name: 'Ensamble' },
-    { code: 'PINTURA', name: 'Pintura' },
-    { code: 'DOBLEZ', name: 'Doblez' },
+    { code: 'CORTE', name: 'Corte', description: 'Corte de materia prima' },
+    { code: 'DOBLEZ', name: 'Doblez', description: 'Doblez de láminas' },
+    { code: 'ENSAMBLE', name: 'Ensamble', description: 'Ensamble de piezas' },
+    { code: 'PINTURA', name: 'Pintura', description: 'Aplicación de pintura' },
+    { code: 'SOLDADURA', name: 'Soldadura', description: 'Unión por soldadura' },
+    { code: 'PERFORACION', name: 'Perforación', description: 'Taladrado de piezas' },
+    { code: 'LIMPIEZA', name: 'Limpieza', description: 'Limpieza y preparación' },
+    { code: 'EMPAQUE', name: 'Empaque', description: 'Empaque final' },
   ]
+
   for (const pt of processTypes) {
     await prisma.processType.upsert({ where: { code: pt.code }, update: {}, create: pt })
   }
 
   const machines = [
-    { code: 'CORTADORA-01', name: 'Cortadora 01' },
-    { code: 'ENSAMBLADORA-01', name: 'Ensambladora 01' },
-    { code: 'PINTURA-01', name: 'Cabina de Pintura 01' },
-    { code: 'DOBLADORA-01', name: 'Dobladora 01' },
+    { code: 'CNC-01', name: 'CNC Corte 1' }, { code: 'CNC-02', name: 'CNC Corte 2' },
+    { code: 'DOBL-01', name: 'Prensa Dobladora 1' }, { code: 'DOBL-02', name: 'Prensa Dobladora 2' },
+    { code: 'ENS-01', name: 'Estación de Ensamble 1' }, { code: 'ENS-02', name: 'Estación de Ensamble 2' },
+    { code: 'PINT-01', name: 'Cabina de Pintura 1' }, { code: 'PINT-02', name: 'Cabina de Pintura 2' },
+    { code: 'SOLD-01', name: 'Estación de Soldadura 1' }, { code: 'PERF-01', name: 'Taladradora 1' },
+    { code: 'LIMP-01', name: 'Estación de Limpieza 1' }, { code: 'EMP-01', name: 'Línea de Empaque 1' },
   ]
+
   for (const m of machines) {
     await prisma.machine.upsert({ where: { code: m.code }, update: {}, create: m })
   }
 
-  const product = await prisma.productCatalog.upsert({
-    where: { code: 'RRAC-BL' },
-    update: {},
-    create: {
-      code: 'RRAC-BL',
-      name: 'Rejilla Rectangular Black',
-      productType: 'rejilla',
-      geometryType: 'rectangular',
-      active: true,
-    },
-  })
-
-  const corteId = (await prisma.processType.findUnique({ where: { code: 'CORTE' } }))!.id
-  const cortadoraId = (await prisma.machine.findUnique({ where: { code: 'CORTADORA-01' } }))!.id
-
-  await prisma.manufacturingProcess.upsert({
-    where: { catalogProductId_order: { catalogProductId: product.id, order: 1 } },
-    update: {},
-    create: {
-      catalogProductId: product.id,
-      processTypeId: corteId,
-      order: 1,
-      machineId: cortadoraId,
-    },
-  })
-
-  console.log('Seed completado')
+  console.log('Seed completado: ProcessTypes y Machines cargados.')
 }
 
 main()

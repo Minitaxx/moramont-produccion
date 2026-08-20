@@ -7,6 +7,9 @@ Qué se hizo:
 - Schema Prisma con modelos de producción
 - Stub de autenticación
 - Estructura de carpetas base
+- Server Actions CRUD completas (productos, tipos de proceso, máquinas, procesos, materiales)
+- Componentes UI: ProductSelector y ProcessManager
+- Seed script para datos maestros de prueba
 
 Qué quedó pendiente:
 - Instalar dependencias (npm install)
@@ -15,6 +18,10 @@ Qué quedó pendiente:
 - Verificar que compile
 - Construir UI funcional
 - Server actions CRUD
+- Ejecutar seed: npx tsx prisma/seed.ts
+- Verificar UI en navegador con datos reales
+- Agregar funcionalidad de reordenar procesos (drag & drop o botones)
+- Editar procesos y materiales existentes (ahora solo crea/elimina)
 
 Decisiones de diseño ya tomadas:
 1. Secuencia de procesos: fija por producto, pero los tipos de proceso se reutilizan entre productos (modelo ProcessType maestro)
