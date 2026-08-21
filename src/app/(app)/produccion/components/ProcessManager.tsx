@@ -83,15 +83,24 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
   }
 
   async function handleMoveProcess(index: number, direction: 'up' | 'down') {
+    if (reordering) return
     const swapIndex = direction === 'up' ? index - 1 : index + 1
+    if (swapIndex < 0 || swapIndex >= processes.length) return
+
     const newOrder = [...processes]
     ;[newOrder[index], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[index]]
     const updated = newOrder.map((p, i) => ({ ...p, order: i + 1 }))
+
     setProcesses(updated)
     setReordering(true)
-    const res = await reorderManufacturingProcesses(product.id, updated.map((p) => p.id))
-    setReordering(false)
-    if ('error' in res) load()
+    try {
+      const res = await reorderManufacturingProcesses(product.id, updated.map((p) => p.id))
+      if ('error' in res) {
+        load() // Revertir si el servidor devuelve error
+      }
+    } finally {
+      setReordering(false) // ← SIEMPRE se ejecuta
+    }
   }
 
   // ── Handlers: edición de proceso ─────────────────────────────────────────

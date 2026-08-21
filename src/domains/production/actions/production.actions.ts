@@ -126,7 +126,22 @@ export async function deleteManufacturingProcess(id: string): Promise<{ ok: true
 export async function reorderManufacturingProcesses(productId: string, orderedIds: string[]): Promise<{ ok: true } | { error: string }> {
   const auth = await requireSession(); if ('error' in auth) return { error: auth.error }
   try {
-    await prisma.$transaction(orderedIds.map((id, index) => prisma.manufacturingProcess.update({ where: { id }, data: { order: index + 1 } })))
+    await prisma.$transaction(async (tx) => {
+      // Paso 1: órdenes temporales altos para liberar el espacio único
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.manufacturingProcess.update({
+          where: { id: orderedIds[i] },
+          data: { order: 10000 + i + 1 },
+        })
+      }
+      // Paso 2: órdenes finales consecutivos
+      for (let i = 0; i < orderedIds.length; i++) {
+        await tx.manufacturingProcess.update({
+          where: { id: orderedIds[i] },
+          data: { order: i + 1 },
+        })
+      }
+    })
     return { ok: true }
   } catch { return { error: 'Error al reordenar procesos' } }
 }
