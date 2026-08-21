@@ -5,6 +5,7 @@ import {
   getProductWithProcesses, getProcessTypes, getMachines, getMaterials,
   createManufacturingProcess, deleteManufacturingProcess, updateManufacturingProcess,
   createProcessMaterial, deleteProcessMaterial, updateProcessMaterial,
+  reorderManufacturingProcesses,
 } from '@/domains/production/actions/production.actions'
 import { ManufacturingProcessItem, ProcessTypeItem, MachineItem, ProductCatalogItem } from '@/domains/production/types'
 
@@ -32,6 +33,9 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null)
   const [editMaterial, setEditMaterial] = useState({ materialId: '', quantity: '', unit: '' })
   const [editMaterialError, setEditMaterialError] = useState<string | null>(null)
+
+  // Reordenamiento
+  const [reordering, setReordering] = useState(false)
 
   const ctrl = 'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200'
 
@@ -76,6 +80,18 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
     if (!confirm('¿Eliminar este proceso y todos sus materiales?')) return
     const res = await deleteManufacturingProcess(id)
     if ('ok' in res && res.ok) load(); else alert('Error al eliminar proceso')
+  }
+
+  async function handleMoveProcess(index: number, direction: 'up' | 'down') {
+    const swapIndex = direction === 'up' ? index - 1 : index + 1
+    const newOrder = [...processes]
+    ;[newOrder[index], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[index]]
+    const updated = newOrder.map((p, i) => ({ ...p, order: i + 1 }))
+    setProcesses(updated)
+    setReordering(true)
+    const res = await reorderManufacturingProcesses(product.id, updated.map((p) => p.id))
+    setReordering(false)
+    if ('error' in res) load()
   }
 
   // ── Handlers: edición de proceso ─────────────────────────────────────────
@@ -221,7 +237,7 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
           </div>
         )}
 
-        {processes.map((proc) => (
+        {processes.map((proc, index) => (
           <div key={proc.id} className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
 
             {/* Cabecera del proceso: vista o edición */}
@@ -287,6 +303,18 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3 pl-4">
+                  <button
+                    onClick={() => handleMoveProcess(index, 'up')}
+                    disabled={index === 0 || reordering}
+                    title="Subir"
+                    className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
+                  >↑</button>
+                  <button
+                    onClick={() => handleMoveProcess(index, 'down')}
+                    disabled={index === processes.length - 1 || reordering}
+                    title="Bajar"
+                    className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
+                  >↓</button>
                   <button onClick={() => handleStartEditProcess(proc)} className="text-sm text-gray-500 hover:text-gray-800 hover:underline">
                     Editar
                   </button>
