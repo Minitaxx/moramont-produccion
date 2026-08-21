@@ -25,7 +25,7 @@ export interface ProcessMaterialItem {
   id: string
   processId: string
   materialId: string
-  materialName: string
+  materialName: string | null
   quantity: number
   unit: string
 }
@@ -41,5 +41,6 @@ export interface ManufacturingProcessItem {
   machineName: string | null
   machineCode: string | null
   estimatedMinutes: number | null
+  notes: string | null
   materials: ProcessMaterialItem[]
 }

@@ -75,6 +75,7 @@ model ManufacturingProcess {
   machineId        String?
   machine          Machine?       @relation(fields: [machineId], references: [id])
   estimatedMinutes Decimal?       @db.Decimal(10, 2)
+  notes            String?
 
   materials ProcessMaterial[]
 

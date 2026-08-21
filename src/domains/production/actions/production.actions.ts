@@ -47,8 +47,9 @@ export async function getProductWithProcesses(productId: string): Promise<
       processTypeName: p.processType.name, processTypeCode: p.processType.code, order: p.order,
       machineId: p.machineId, machineName: p.machine?.name ?? null, machineCode: p.machine?.code ?? null,
       estimatedMinutes: p.estimatedMinutes ? Number(p.estimatedMinutes) : null,
+      notes: p.notes ?? null,
       materials: p.materials.map((m) => ({
-        id: m.id, processId: m.processId, materialId: m.materialId, materialName: m.material.name,
+        id: m.id, processId: m.processId, materialId: m.materialId, materialName: m.material?.name ?? null,
         quantity: Number(m.quantity), unit: m.unit,
       })),
     }))
@@ -93,18 +94,26 @@ export async function updateMachine(id: string, data: { code?: string; name?: st
   try { await prisma.machine.update({ where: { id }, data }); return { ok: true } } catch { return { error: 'Error al actualizar máquina' } }
 }
 
-export async function createManufacturingProcess(data: { catalogProductId: string; processTypeId: string; order: number; machineId?: string; estimatedMinutes?: number }): Promise<{ ok: true; id: string } | { error: string }> {
+export async function createManufacturingProcess(data: { catalogProductId: string; processTypeId: string; order: number; machineId?: string; estimatedMinutes?: number; notes?: string }): Promise<{ ok: true; id: string } | { error: string }> {
   const auth = await requireSession(); if ('error' in auth) return { error: auth.error }
   try {
-    const item = await prisma.manufacturingProcess.create({ data: { catalogProductId: data.catalogProductId, processTypeId: data.processTypeId, order: data.order, machineId: data.machineId || null, estimatedMinutes: data.estimatedMinutes != null ? data.estimatedMinutes : null } })
+    const conflict = await prisma.manufacturingProcess.findFirst({ where: { catalogProductId: data.catalogProductId, order: data.order } })
+    if (conflict) return { error: 'Ya existe un proceso con ese orden en este producto' }
+    const item = await prisma.manufacturingProcess.create({ data: { catalogProductId: data.catalogProductId, processTypeId: data.processTypeId, order: data.order, machineId: data.machineId || null, estimatedMinutes: data.estimatedMinutes != null ? data.estimatedMinutes : null, notes: data.notes || null } })
     return { ok: true, id: item.id }
   } catch { return { error: 'Error al crear proceso' } }
 }
 
-export async function updateManufacturingProcess(id: string, data: { processTypeId?: string; order?: number; machineId?: string; estimatedMinutes?: number }): Promise<{ ok: true } | { error: string }> {
+export async function updateManufacturingProcess(id: string, data: { processTypeId?: string; order?: number; machineId?: string | null; estimatedMinutes?: number | null; notes?: string | null }): Promise<{ ok: true } | { error: string }> {
   const auth = await requireSession(); if ('error' in auth) return { error: auth.error }
   try {
-    await prisma.manufacturingProcess.update({ where: { id }, data: { processTypeId: data.processTypeId, order: data.order, machineId: data.machineId === undefined ? undefined : data.machineId || null, estimatedMinutes: data.estimatedMinutes === undefined ? undefined : data.estimatedMinutes ?? null } })
+    if (data.order !== undefined) {
+      const proc = await prisma.manufacturingProcess.findUnique({ where: { id }, select: { catalogProductId: true } })
+      if (!proc) return { error: 'Proceso no encontrado' }
+      const conflict = await prisma.manufacturingProcess.findFirst({ where: { catalogProductId: proc.catalogProductId, order: data.order, NOT: { id } } })
+      if (conflict) return { error: 'Ya existe un proceso con ese orden en este producto' }
+    }
+    await prisma.manufacturingProcess.update({ where: { id }, data: { processTypeId: data.processTypeId, order: data.order, machineId: data.machineId === undefined ? undefined : data.machineId, estimatedMinutes: data.estimatedMinutes === undefined ? undefined : data.estimatedMinutes, notes: data.notes === undefined ? undefined : data.notes } })
     return { ok: true }
   } catch { return { error: 'Error al actualizar proceso' } }
 }
