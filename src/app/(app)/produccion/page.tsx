@@ -9,22 +9,15 @@ export default function ProduccionPage() {
   const [selectedProduct, setSelectedProduct] = useState<ProductCatalogItem | null>(null)
 
   return (
-    <main className="min-h-screen bg-gray-100 p-6">
-      <h1 className="text-2xl font-bold mb-6">Módulo de Producción</h1>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1">
-          <ProductSelector onSelect={setSelectedProduct} />
-        </div>
-        <div className="md:col-span-2">
-          {selectedProduct ? (
-            <ProcessManager product={selectedProduct} />
-          ) : (
-            <div className="p-4 border rounded bg-white text-gray-500">
-              Seleccioná un producto del catálogo para ver y gestionar sus procesos de fabricación.
-            </div>
-          )}
-        </div>
+    <div className="space-y-6">
+      <div>
+        <p className="mb-1 text-sm text-gray-500">
+          {selectedProduct ? <span className="cursor-pointer hover:text-gray-700" onClick={() => setSelectedProduct(null)}>← Catálogo de productos</span> : 'Catálogo de productos'}
+        </p>
+        <h2 className="text-xl font-bold text-gray-900">{selectedProduct ? selectedProduct.name : 'Seleccionar producto'}</h2>
+        {selectedProduct && <p className="mt-1 text-sm text-gray-500">{selectedProduct.code} · {selectedProduct.geometryType} · {selectedProduct.productType}</p>}
       </div>
-    </main>
+      {!selectedProduct ? <ProductSelector onSelect={setSelectedProduct} /> : <ProcessManager product={selectedProduct} onBack={() => setSelectedProduct(null)} />}
+    </div>
   )
 }

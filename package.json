@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "@tailwindcss/postcss": "^4.3.3",
     "next": "16.2.9",
     "pg": "^8.0.0",
     "prisma": "6.19.3",
