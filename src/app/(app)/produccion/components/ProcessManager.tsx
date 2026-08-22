@@ -37,6 +37,14 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
   // Reordenamiento
   const [reordering, setReordering] = useState(false)
 
+  // Indicadores de carga
+  const [savingProcess, setSavingProcess] = useState(false)
+  const [savingMaterial, setSavingMaterial] = useState(false)
+  const [deletingProcessId, setDeletingProcessId] = useState<string | null>(null)
+  const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(null)
+  const [newMaterialError, setNewMaterialError] = useState<Record<string, string | null>>({})
+  const [deleteProcessError, setDeleteProcessError] = useState<Record<string, string>>({})
+
   const ctrl = 'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200'
 
   const load = useCallback(() => {
@@ -56,30 +64,47 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
 
   // ── Handlers: nuevo proceso ──────────────────────────────────────────────
   async function handleAddProcess() {
-    if (!newProcess.processTypeId) return
     setNewProcessError(null)
+    if (!newProcess.processTypeId) { setNewProcessError('Seleccioná un tipo de proceso'); return }
     const orderNum = newProcess.order ? Number(newProcess.order) : processes.length + 1
-    const res = await createManufacturingProcess({
-      catalogProductId: product.id,
-      processTypeId: newProcess.processTypeId,
-      order: orderNum,
-      machineId: newProcess.machineId || undefined,
-      estimatedMinutes: newProcess.estimatedMinutes ? Number(newProcess.estimatedMinutes) : undefined,
-      notes: newProcess.notes || undefined,
-    })
-    if ('ok' in res && res.ok) {
-      setNewProcess({ processTypeId: '', machineId: '', estimatedMinutes: '', order: '', notes: '' })
-      setShowAddForm(false)
-      load()
-    } else if ('error' in res) {
-      setNewProcessError(res.error)
+    if (orderNum < 1) { setNewProcessError('El orden debe ser al menos 1'); return }
+    const mins = newProcess.estimatedMinutes ? Number(newProcess.estimatedMinutes) : undefined
+    if (mins !== undefined && mins < 0) { setNewProcessError('Los minutos no pueden ser negativos'); return }
+    setSavingProcess(true)
+    try {
+      const res = await createManufacturingProcess({
+        catalogProductId: product.id,
+        processTypeId: newProcess.processTypeId,
+        order: orderNum,
+        machineId: newProcess.machineId || undefined,
+        estimatedMinutes: mins,
+        notes: newProcess.notes || undefined,
+      })
+      if ('ok' in res && res.ok) {
+        setNewProcess({ processTypeId: '', machineId: '', estimatedMinutes: '', order: '', notes: '' })
+        setShowAddForm(false)
+        load()
+      } else if ('error' in res) {
+        setNewProcessError(res.error)
+      }
+    } finally {
+      setSavingProcess(false)
     }
   }
 
   async function handleDeleteProcess(id: string) {
     if (!confirm('¿Eliminar este proceso y todos sus materiales?')) return
-    const res = await deleteManufacturingProcess(id)
-    if ('ok' in res && res.ok) load(); else alert('Error al eliminar proceso')
+    setDeletingProcessId(id)
+    try {
+      const res = await deleteManufacturingProcess(id)
+      if ('ok' in res && res.ok) {
+        load()
+      } else {
+        setDeleteProcessError((prev) => ({ ...prev, [id]: 'Error al eliminar proceso' }))
+      }
+    } finally {
+      setDeletingProcessId(null)
+    }
   }
 
   async function handleMoveProcess(index: number, direction: 'up' | 'down') {
@@ -96,10 +121,11 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
     try {
       const res = await reorderManufacturingProcesses(product.id, updated.map((p) => p.id))
       if ('error' in res) {
-        load() // Revertir si el servidor devuelve error
+        load()
       }
+      load() // Sincronizar órdenes exactos con DB
     } finally {
-      setReordering(false) // ← SIEMPRE se ejecuta
+      setReordering(false)
     }
   }
 
@@ -118,36 +144,59 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
 
   async function handleSaveProcess(procId: string) {
     setEditProcessError(null)
-    const res = await updateManufacturingProcess(procId, {
-      processTypeId: editProcess.processTypeId || undefined,
-      order: editProcess.order ? Number(editProcess.order) : undefined,
-      machineId: editProcess.machineId || null,
-      estimatedMinutes: editProcess.estimatedMinutes ? Number(editProcess.estimatedMinutes) : null,
-      notes: editProcess.notes || null,
-    })
-    if ('ok' in res && res.ok) {
-      setEditingProcessId(null)
-      load()
-    } else if ('error' in res) {
-      setEditProcessError(res.error)
+    if (!editProcess.processTypeId) { setEditProcessError('Seleccioná un tipo de proceso'); return }
+    if (editProcess.order && Number(editProcess.order) < 1) { setEditProcessError('El orden debe ser al menos 1'); return }
+    if (editProcess.estimatedMinutes && Number(editProcess.estimatedMinutes) < 0) { setEditProcessError('Los minutos no pueden ser negativos'); return }
+    setSavingProcess(true)
+    try {
+      const res = await updateManufacturingProcess(procId, {
+        processTypeId: editProcess.processTypeId || undefined,
+        order: editProcess.order ? Number(editProcess.order) : undefined,
+        machineId: editProcess.machineId || null,
+        estimatedMinutes: editProcess.estimatedMinutes ? Number(editProcess.estimatedMinutes) : null,
+        notes: editProcess.notes || null,
+      })
+      if ('ok' in res && res.ok) {
+        setEditingProcessId(null)
+        load()
+      } else if ('error' in res) {
+        setEditProcessError(res.error)
+      }
+    } finally {
+      setSavingProcess(false)
     }
   }
 
   // ── Handlers: materiales ─────────────────────────────────────────────────
   async function handleAddMaterial(processId: string) {
     const mat = newMaterial[processId]
-    if (!mat || !mat.materialId || !mat.quantity || !mat.unit) return
-    const res = await createProcessMaterial({ processId, materialId: mat.materialId, quantity: Number(mat.quantity), unit: mat.unit })
-    if ('ok' in res && res.ok) {
-      setNewMaterial((prev) => ({ ...prev, [processId]: { materialId: '', quantity: '', unit: '' } }))
-      load()
-    } else alert('Error al agregar material')
+    setNewMaterialError((prev) => ({ ...prev, [processId]: null }))
+    if (!mat?.materialId) { setNewMaterialError((prev) => ({ ...prev, [processId]: 'Seleccioná un material' })); return }
+    if (!mat?.quantity || Number(mat.quantity) <= 0) { setNewMaterialError((prev) => ({ ...prev, [processId]: 'La cantidad debe ser mayor a 0' })); return }
+    if (!mat?.unit?.trim()) { setNewMaterialError((prev) => ({ ...prev, [processId]: 'La unidad es requerida' })); return }
+    setSavingMaterial(true)
+    try {
+      const res = await createProcessMaterial({ processId, materialId: mat.materialId, quantity: Number(mat.quantity), unit: mat.unit })
+      if ('ok' in res && res.ok) {
+        setNewMaterial((prev) => ({ ...prev, [processId]: { materialId: '', quantity: '', unit: '' } }))
+        load()
+      } else if ('error' in res) {
+        setNewMaterialError((prev) => ({ ...prev, [processId]: res.error }))
+      }
+    } finally {
+      setSavingMaterial(false)
+    }
   }
 
   async function handleDeleteMaterial(id: string) {
     if (!confirm('¿Quitar este material?')) return
-    const res = await deleteProcessMaterial(id)
-    if ('ok' in res && res.ok) load(); else alert('Error al eliminar material')
+    setDeletingMaterialId(id)
+    try {
+      const res = await deleteProcessMaterial(id)
+      if ('ok' in res && res.ok) load()
+    } finally {
+      setDeletingMaterialId(null)
+    }
   }
 
   function handleStartEditMaterial(mat: { id: string; materialId: string; quantity: number; unit: string | null }) {
@@ -158,16 +207,23 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
 
   async function handleSaveMaterial(matId: string) {
     setEditMaterialError(null)
-    const res = await updateProcessMaterial(matId, {
-      materialId: editMaterial.materialId || undefined,
-      quantity: editMaterial.quantity ? Number(editMaterial.quantity) : undefined,
-      unit: editMaterial.unit || undefined,
-    })
-    if ('ok' in res && res.ok) {
-      setEditingMaterialId(null)
-      load()
-    } else if ('error' in res) {
-      setEditMaterialError(res.error)
+    if (!editMaterial.materialId) { setEditMaterialError('Seleccioná un material'); return }
+    if (!editMaterial.quantity || Number(editMaterial.quantity) <= 0) { setEditMaterialError('La cantidad debe ser mayor a 0'); return }
+    setSavingMaterial(true)
+    try {
+      const res = await updateProcessMaterial(matId, {
+        materialId: editMaterial.materialId || undefined,
+        quantity: editMaterial.quantity ? Number(editMaterial.quantity) : undefined,
+        unit: editMaterial.unit || undefined,
+      })
+      if ('ok' in res && res.ok) {
+        setEditingMaterialId(null)
+        load()
+      } else if ('error' in res) {
+        setEditMaterialError(res.error)
+      }
+    } finally {
+      setSavingMaterial(false)
     }
   }
 
@@ -231,8 +287,8 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
           </div>
           {newProcessError && <p className="mt-3 text-sm font-medium text-red-600">{newProcessError}</p>}
           <div className="mt-4 flex justify-end">
-            <button onClick={handleAddProcess} className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800">
-              Guardar proceso
+            <button onClick={handleAddProcess} disabled={savingProcess} className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50">
+              {savingProcess ? 'Guardando...' : 'Guardar proceso'}
             </button>
           </div>
         </div>
@@ -277,8 +333,8 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
                 </div>
                 {editProcessError && <p className="mt-3 text-sm font-medium text-red-600">{editProcessError}</p>}
                 <div className="mt-4 flex items-center gap-3">
-                  <button onClick={() => handleSaveProcess(proc.id)} className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800">
-                    Guardar
+                  <button onClick={() => handleSaveProcess(proc.id)} disabled={savingProcess} className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50">
+                    {savingProcess ? 'Guardando...' : 'Guardar'}
                   </button>
                   <button
                     onClick={() => { setEditingProcessId(null); setEditProcessError(null) }}
@@ -327,9 +383,12 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
                   <button onClick={() => handleStartEditProcess(proc)} className="text-sm text-gray-500 hover:text-gray-800 hover:underline">
                     Editar
                   </button>
-                  <button onClick={() => handleDeleteProcess(proc.id)} className="text-sm text-red-600 hover:text-red-800 hover:underline">
-                    Eliminar
+                  <button onClick={() => handleDeleteProcess(proc.id)} disabled={deletingProcessId === proc.id} className="text-sm text-red-600 hover:text-red-800 hover:underline disabled:cursor-not-allowed disabled:opacity-50">
+                    {deletingProcessId === proc.id ? 'Eliminando...' : 'Eliminar'}
                   </button>
+                  {deleteProcessError[proc.id] && (
+                    <span className="text-xs text-red-600">{deleteProcessError[proc.id]}</span>
+                  )}
                 </div>
               </div>
             )}
@@ -370,8 +429,8 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
                             </td>
                             <td className="py-1.5 text-right whitespace-nowrap">
                               {editMaterialError && <span className="mr-2 text-xs text-red-600">{editMaterialError}</span>}
-                              <button onClick={() => handleSaveMaterial(mat.id)} className="mr-1.5 rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white hover:bg-gray-800">✓</button>
-                              <button onClick={() => { setEditingMaterialId(null); setEditMaterialError(null) }} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50">✗</button>
+                              <button onClick={() => handleSaveMaterial(mat.id)} disabled={savingMaterial} className="mr-1.5 rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50">{savingMaterial ? '…' : '✓'}</button>
+                              <button onClick={() => { setEditingMaterialId(null); setEditMaterialError(null) }} disabled={savingMaterial} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50">✗</button>
                             </td>
                           </tr>
                         ) : (
@@ -381,7 +440,7 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
                             <td className="py-2 text-gray-600">{mat.unit}</td>
                             <td className="py-2 text-right whitespace-nowrap">
                               <button onClick={() => handleStartEditMaterial(mat)} className="mr-3 text-xs text-gray-500 hover:text-gray-800 hover:underline">Editar</button>
-                              <button onClick={() => handleDeleteMaterial(mat.id)} className="text-xs text-red-600 hover:text-red-800 hover:underline">Quitar</button>
+                              <button onClick={() => handleDeleteMaterial(mat.id)} disabled={deletingMaterialId === mat.id} className="text-xs text-red-600 hover:text-red-800 hover:underline disabled:cursor-not-allowed disabled:opacity-50">{deletingMaterialId === mat.id ? '…' : 'Quitar'}</button>
                             </td>
                           </tr>
                         )
@@ -405,8 +464,11 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
                 <Field label="Unidad" className="w-32">
                   <input type="text" placeholder="kg, m, und..." value={newMaterial[proc.id]?.unit || ''} onChange={(e) => setNewMaterial((prev) => ({ ...prev, [proc.id]: { ...prev[proc.id], unit: e.target.value } }))} className={ctrl} />
                 </Field>
-                <button onClick={() => handleAddMaterial(proc.id)} className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800">
-                  Agregar
+                {newMaterialError[proc.id] && (
+                  <p className="w-full text-sm text-red-600">{newMaterialError[proc.id]}</p>
+                )}
+                <button onClick={() => handleAddMaterial(proc.id)} disabled={savingMaterial} className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50">
+                  {savingMaterial ? 'Agregando...' : 'Agregar'}
                 </button>
               </div>
             </div>

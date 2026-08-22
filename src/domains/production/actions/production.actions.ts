@@ -96,6 +96,9 @@ export async function updateMachine(id: string, data: { code?: string; name?: st
 
 export async function createManufacturingProcess(data: { catalogProductId: string; processTypeId: string; order: number; machineId?: string; estimatedMinutes?: number; notes?: string }): Promise<{ ok: true; id: string } | { error: string }> {
   const auth = await requireSession(); if ('error' in auth) return { error: auth.error }
+  if (!data.processTypeId) return { error: 'El tipo de proceso es requerido' }
+  if (data.order < 1) return { error: 'El orden debe ser al menos 1' }
+  if (data.estimatedMinutes != null && data.estimatedMinutes < 0) return { error: 'Los minutos no pueden ser negativos' }
   try {
     const conflict = await prisma.manufacturingProcess.findFirst({ where: { catalogProductId: data.catalogProductId, order: data.order } })
     if (conflict) return { error: 'Ya existe un proceso con ese orden en este producto' }
@@ -106,6 +109,8 @@ export async function createManufacturingProcess(data: { catalogProductId: strin
 
 export async function updateManufacturingProcess(id: string, data: { processTypeId?: string; order?: number; machineId?: string | null; estimatedMinutes?: number | null; notes?: string | null }): Promise<{ ok: true } | { error: string }> {
   const auth = await requireSession(); if ('error' in auth) return { error: auth.error }
+  if (data.order !== undefined && data.order < 1) return { error: 'El orden debe ser al menos 1' }
+  if (data.estimatedMinutes != null && data.estimatedMinutes < 0) return { error: 'Los minutos no pueden ser negativos' }
   try {
     if (data.order !== undefined) {
       const proc = await prisma.manufacturingProcess.findUnique({ where: { id }, select: { catalogProductId: true } })
@@ -148,11 +153,16 @@ export async function reorderManufacturingProcesses(productId: string, orderedId
 
 export async function createProcessMaterial(data: { processId: string; materialId: string; quantity: number; unit: string }): Promise<{ ok: true; id: string } | { error: string }> {
   const auth = await requireSession(); if ('error' in auth) return { error: auth.error }
+  if (!data.materialId) return { error: 'El material es requerido' }
+  if (data.quantity <= 0) return { error: 'La cantidad debe ser mayor a 0' }
+  if (!data.unit?.trim()) return { error: 'La unidad es requerida' }
   try { const item = await prisma.processMaterial.create({ data }); return { ok: true, id: item.id } } catch { return { error: 'Error al crear material de proceso' } }
 }
 
 export async function updateProcessMaterial(id: string, data: { materialId?: string; quantity?: number; unit?: string }): Promise<{ ok: true } | { error: string }> {
   const auth = await requireSession(); if ('error' in auth) return { error: auth.error }
+  if (data.quantity !== undefined && data.quantity <= 0) return { error: 'La cantidad debe ser mayor a 0' }
+  if (data.unit !== undefined && !data.unit.trim()) return { error: 'La unidad no puede estar vacía' }
   try { await prisma.processMaterial.update({ where: { id }, data }); return { ok: true } } catch { return { error: 'Error al actualizar material de proceso' } }
 }
 
