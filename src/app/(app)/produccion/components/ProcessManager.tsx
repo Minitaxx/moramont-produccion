@@ -70,6 +70,11 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
     if (orderNum < 1) { setNewProcessError('El orden debe ser al menos 1'); return }
     const mins = newProcess.estimatedMinutes ? Number(newProcess.estimatedMinutes) : undefined
     if (mins !== undefined && mins < 0) { setNewProcessError('Los minutos no pueden ser negativos'); return }
+    // Prevalidar order duplicado en frontend
+    if (processes.some((p) => p.order === orderNum)) {
+      setNewProcessError('Ya existe un proceso con ese orden')
+      return
+    }
     setSavingProcess(true)
     try {
       const res = await createManufacturingProcess({
@@ -94,11 +99,15 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
 
   async function handleDeleteProcess(id: string) {
     if (!confirm('¿Eliminar este proceso y todos sus materiales?')) return
+    // Limpiar error previo de este proceso al reintentar
+    setDeleteProcessError((prev) => { const next = { ...prev }; delete next[id]; return next })
     setDeletingProcessId(id)
     try {
       const res = await deleteManufacturingProcess(id)
       if ('ok' in res && res.ok) {
         load()
+      } else if ('error' in res) {
+        setDeleteProcessError((prev) => ({ ...prev, [id]: res.error }))
       } else {
         setDeleteProcessError((prev) => ({ ...prev, [id]: 'Error al eliminar proceso' }))
       }
@@ -147,6 +156,14 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
     if (!editProcess.processTypeId) { setEditProcessError('Seleccioná un tipo de proceso'); return }
     if (editProcess.order && Number(editProcess.order) < 1) { setEditProcessError('El orden debe ser al menos 1'); return }
     if (editProcess.estimatedMinutes && Number(editProcess.estimatedMinutes) < 0) { setEditProcessError('Los minutos no pueden ser negativos'); return }
+    // Prevalidar order duplicado en frontend (excluyendo el proceso que se está editando)
+    if (editProcess.order) {
+      const orderNum = Number(editProcess.order)
+      if (processes.some((p) => p.order === orderNum && p.id !== procId)) {
+        setEditProcessError('Ya existe un proceso con ese orden')
+        return
+      }
+    }
     setSavingProcess(true)
     try {
       const res = await updateManufacturingProcess(procId, {
@@ -367,27 +384,29 @@ export default function ProcessManager({ product, onBack }: { product: ProductCa
                     {proc.notes && <p className="mt-1 text-xs text-gray-400">{proc.notes}</p>}
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-3 pl-4">
-                  <button
-                    onClick={() => handleMoveProcess(index, 'up')}
-                    disabled={index === 0 || reordering}
-                    title="Subir"
-                    className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
-                  >↑</button>
-                  <button
-                    onClick={() => handleMoveProcess(index, 'down')}
-                    disabled={index === processes.length - 1 || reordering}
-                    title="Bajar"
-                    className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
-                  >↓</button>
-                  <button onClick={() => handleStartEditProcess(proc)} className="text-sm text-gray-500 hover:text-gray-800 hover:underline">
-                    Editar
-                  </button>
-                  <button onClick={() => handleDeleteProcess(proc.id)} disabled={deletingProcessId === proc.id} className="text-sm text-red-600 hover:text-red-800 hover:underline disabled:cursor-not-allowed disabled:opacity-50">
-                    {deletingProcessId === proc.id ? 'Eliminando...' : 'Eliminar'}
-                  </button>
+                <div className="shrink-0 pl-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleMoveProcess(index, 'up')}
+                      disabled={index === 0 || reordering}
+                      title="Subir"
+                      className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
+                    >↑</button>
+                    <button
+                      onClick={() => handleMoveProcess(index, 'down')}
+                      disabled={index === processes.length - 1 || reordering}
+                      title="Bajar"
+                      className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
+                    >↓</button>
+                    <button onClick={() => handleStartEditProcess(proc)} className="text-sm text-gray-500 hover:text-gray-800 hover:underline">
+                      Editar
+                    </button>
+                    <button onClick={() => handleDeleteProcess(proc.id)} disabled={deletingProcessId === proc.id} className="text-sm text-red-600 hover:text-red-800 hover:underline disabled:cursor-not-allowed disabled:opacity-50">
+                      {deletingProcessId === proc.id ? 'Eliminando...' : 'Eliminar'}
+                    </button>
+                  </div>
                   {deleteProcessError[proc.id] && (
-                    <span className="text-xs text-red-600">{deleteProcessError[proc.id]}</span>
+                    <p className="mt-2 text-sm text-red-600">{deleteProcessError[proc.id]}</p>
                   )}
                 </div>
               </div>
