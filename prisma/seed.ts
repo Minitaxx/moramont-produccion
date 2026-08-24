@@ -1,8 +1,10 @@
 import { PrismaClient } from '@prisma/client'
+import { seedOperators } from './seed-operators'
+import { seedWorkOrders } from './seed-workorders'
 
 const prisma = new PrismaClient()
 
-async function main() {
+async function seedBase() {
   const processTypes = [
     { code: 'CORTE', name: 'Corte', description: 'Corte de materia prima' },
     { code: 'DOBLEZ', name: 'Doblez', description: 'Doblez de láminas' },
@@ -31,7 +33,30 @@ async function main() {
     await prisma.machine.upsert({ where: { code: m.code }, update: {}, create: m })
   }
 
-  console.log('Seed completado: ProcessTypes y Machines cargados.')
+  const materials = [
+    { name: 'Aluminio 5052' },
+    { name: 'Aluminio 6061' },
+    { name: 'Acero Galvanizado' },
+    { name: 'Acero Inoxidable 304' },
+    { name: 'Pintura Epóxica Negra' },
+    { name: 'Pintura Epóxica Blanca' },
+    { name: 'Tornillo M4x16' },
+    { name: 'Tuerca M4' },
+    { name: 'Silicona Industrial' },
+    { name: 'Cinta de Embalaje' },
+  ]
+
+  for (const material of materials) {
+    await prisma.material.upsert({ where: { name: material.name }, update: {}, create: material })
+  }
+
+  console.log('Seed base: ProcessTypes, Machines y Materials cargados.')
+}
+
+async function main() {
+  await seedBase()
+  await seedOperators(prisma)
+  await seedWorkOrders(prisma)
 }
 
 main()

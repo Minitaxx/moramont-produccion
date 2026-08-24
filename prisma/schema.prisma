@@ -23,6 +23,7 @@ model ProductCatalog {
   createdAt      DateTime @default(now())
 
   manufacturingProcesses ManufacturingProcess[] @relation("ProductManufacturingProcesses")
+  workOrders             WorkOrder[]
 
   @@map("product_catalog")
 }
@@ -48,7 +49,8 @@ model ProcessType {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  processes ManufacturingProcess[]
+  processes      ManufacturingProcess[]
+  workOrderTasks WorkOrderTask[]
 
   @@map("process_types")
 }
@@ -93,4 +95,127 @@ model ProcessMaterial {
   unit       String
 
   @@map("process_materials")
+}
+
+// ============================================================
+// MÓDULO: CONTROL DE TIEMPOS POR OPERARIO
+// ============================================================
+
+enum WorkOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskStatus {
+  BLOCKED
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum RecordStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+model Operator {
+  id           String   @id @default(cuid())
+  name         String
+  employeeCode String?  @unique
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  assignedTasks WorkOrderTaskOperator[]
+  timeRecords   TaskTimeRecord[]
+
+  @@map("operators")
+}
+
+model WorkOrder {
+  id            String          @id @default(cuid())
+  code          String          @unique
+  productId     String
+  product       ProductCatalog  @relation(fields: [productId], references: [id])
+  quantityTotal Int
+  status        WorkOrderStatus @default(PENDING)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  tasks WorkOrderTask[]
+
+  @@map("work_orders")
+}
+
+model WorkOrderTask {
+  id            String      @id @default(cuid())
+  workOrderId   String
+  workOrder     WorkOrder   @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  processTypeId String
+  processType   ProcessType @relation(fields: [processTypeId], references: [id])
+  order         Int
+  quantityTotal Int
+  instructions  String?
+
+  // Dependencias
+  requiresTaskId String?
+  requires       WorkOrderTask?  @relation("TaskDependency", fields: [requiresTaskId], references: [id])
+  requiredBy     WorkOrderTask[] @relation("TaskDependency")
+
+  // Asignaciones
+  assignedOperators WorkOrderTaskOperator[]
+
+  // Estado global
+  status TaskStatus @default(BLOCKED)
+
+  // Registros de tiempo individuales
+  timeRecords TaskTimeRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workOrderId, order])
+  @@map("work_order_tasks")
+}
+
+model WorkOrderTaskOperator {
+  id              String        @id @default(cuid())
+  workOrderTaskId String
+  workOrderTask   WorkOrderTask @relation(fields: [workOrderTaskId], references: [id], onDelete: Cascade)
+  operatorId      String
+  operator        Operator      @relation(fields: [operatorId], references: [id])
+  createdAt       DateTime      @default(now())
+
+  @@unique([workOrderTaskId, operatorId])
+  @@map("work_order_task_operators")
+}
+
+model TaskTimeRecord {
+  id              String        @id @default(cuid())
+  workOrderTaskId String
+  workOrderTask   WorkOrderTask @relation(fields: [workOrderTaskId], references: [id], onDelete: Cascade)
+  operatorId      String
+  operator        Operator      @relation(fields: [operatorId], references: [id])
+
+  status RecordStatus @default(NOT_STARTED)
+
+  startedAt     DateTime?
+  pausedAt      DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  totalPausedMs Int       @default(0)
+
+  // Solo al pausar
+  piecesAdvanced Int?
+  pauseReason    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workOrderTaskId, operatorId])
+  @@map("task_time_records")
 }
