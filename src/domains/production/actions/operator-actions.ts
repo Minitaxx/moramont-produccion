@@ -40,6 +40,9 @@ export async function getOperatorTasks(operatorId: string) {
             requires: {
               include: { processType: true },
             },
+            assignedOperators: {
+              include: { operator: true },
+            },
             // Solo los time records de este operario
             timeRecords: {
               where: { operatorId },
