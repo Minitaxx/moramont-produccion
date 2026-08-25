@@ -32,11 +32,17 @@ export default async function OrdenesPage() {
   return (
     <div className="space-y-6">
       {/* Cabecera */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <Link
+          href="/produccion"
+          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+        >
+          ← Volver
+        </Link>
         <h2 className="text-xl font-bold text-gray-900">Órdenes de trabajo</h2>
         <Link
           href="/produccion/ordenes/nueva"
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+          className="ml-auto rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
         >
           + Crear nueva orden
         </Link>

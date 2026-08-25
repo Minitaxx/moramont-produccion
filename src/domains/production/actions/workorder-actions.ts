@@ -186,7 +186,14 @@ export async function getProductProcesses(productId: string) {
       orderBy: { order: 'asc' },
       include: { processType: true },
     })
-    return { ok: true as const, data: processes }
+
+    // Convertir Decimal a number para serialización en Client Components
+    const serialized = processes.map((p) => ({
+      ...p,
+      estimatedMinutes: p.estimatedMinutes ? Number(p.estimatedMinutes) : null,
+    }))
+
+    return { ok: true as const, data: serialized }
   } catch (e) {
     console.error('[getProductProcesses]', e)
     return { error: 'Error al obtener procesos del producto' }
