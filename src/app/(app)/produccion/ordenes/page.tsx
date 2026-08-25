@@ -41,8 +41,14 @@ export default async function OrdenesPage() {
         </Link>
         <h2 className="text-xl font-bold text-gray-900">Órdenes de trabajo</h2>
         <Link
+          href="/produccion/control-tiempos"
+          className="ml-auto rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+        >
+          Control de tiempos
+        </Link>
+        <Link
           href="/produccion/ordenes/nueva"
-          className="ml-auto rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
         >
           + Crear nueva orden
         </Link>

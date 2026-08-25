@@ -315,3 +315,50 @@ export async function getTaskTimeRecords({
     return { error: 'Error al obtener los registros de tiempo' }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getAllTaskTimeRecords
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getAllTaskTimeRecords({
+  operatorId,
+  workOrderId,
+  fromDate,
+  toDate,
+}: {
+  operatorId?: string
+  workOrderId?: string
+  fromDate?: string
+  toDate?: string
+} = {}) {
+  try {
+    const where: any = {}
+    if (operatorId) where.operatorId = operatorId
+    if (workOrderId) where.workOrderTask = { workOrderId }
+    // Filtrar por startedAt cubriendo todo el día (00:00:00 a 23:59:59)
+    if (fromDate || toDate) {
+      where.startedAt = {}
+      if (fromDate) where.startedAt.gte = new Date(`${fromDate}T00:00:00`)
+      if (toDate) where.startedAt.lte = new Date(`${toDate}T23:59:59`)
+    }
+
+    const records = await prisma.taskTimeRecord.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        operator: true,
+        workOrderTask: {
+          include: {
+            workOrder: true,
+            processType: true,
+          },
+        },
+      },
+    })
+
+    return { ok: true as const, data: records }
+  } catch (e) {
+    console.error('[getAllTaskTimeRecords]', e)
+    return { error: 'Error al obtener registros de tiempo' }
+  }
+}
