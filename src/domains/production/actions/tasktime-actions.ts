@@ -109,13 +109,30 @@ export async function pauseTask({ recordId, pauseReason }: { recordId: string; p
     if (!record) return { error: 'Registro no encontrado' }
     if (record.status !== 'IN_PROGRESS') return { error: 'El registro no está en progreso' }
 
-    await prisma.taskTimeRecord.update({
-      where: { id: recordId },
-      data: {
-        status: 'PAUSED',
-        pausedAt: new Date(),
-        pauseReason: pauseReason.trim(),
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.taskTimeRecord.update({
+        where: { id: recordId },
+        data: {
+          status: 'PAUSED',
+          pausedAt: new Date(),
+          pauseReason: pauseReason.trim(),
+        },
+      })
+
+      // Bajar la tarea a PAUSED solo si ningún otro operario sigue activo en ella
+      const othersActive = await tx.taskTimeRecord.findFirst({
+        where: {
+          workOrderTaskId: record.workOrderTaskId,
+          id: { not: recordId },
+          status: { in: ['IN_PROGRESS', 'PAUSED'] },
+        },
+      })
+      if (!othersActive) {
+        await tx.workOrderTask.update({
+          where: { id: record.workOrderTaskId },
+          data: { status: 'PAUSED' },
+        })
+      }
     })
 
     return { ok: true as const }
@@ -283,13 +300,28 @@ export async function cancelTask(recordId: string) {
       return { error: 'Solo se pueden cancelar registros en progreso o pausados' }
     }
 
-    // Nunca borrar startedAt: se preserva la trazabilidad
-    await prisma.taskTimeRecord.update({
-      where: { id: recordId },
-      data: {
-        status: 'CANCELLED',
-        cancelledAt: new Date(),
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.taskTimeRecord.update({
+        where: { id: recordId },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+        },
+      })
+
+      // Si no quedan registros activos para esta tarea, volver a PENDING
+      const remainingActive = await tx.taskTimeRecord.findFirst({
+        where: {
+          workOrderTaskId: record.workOrderTaskId,
+          status: { in: ['IN_PROGRESS', 'PAUSED'] },
+        },
+      })
+      if (!remainingActive) {
+        await tx.workOrderTask.update({
+          where: { id: record.workOrderTaskId },
+          data: { status: 'PENDING' },
+        })
+      }
     })
 
     return { ok: true as const }

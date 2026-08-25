@@ -112,6 +112,7 @@ enum TaskStatus {
   BLOCKED
   PENDING
   IN_PROGRESS
+  PAUSED
   COMPLETED
 }
 
