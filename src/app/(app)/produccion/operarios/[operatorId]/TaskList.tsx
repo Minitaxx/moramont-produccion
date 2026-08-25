@@ -124,12 +124,13 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-blue-600 px-4 text-base font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={pendingTaskId === task.id}
-            onClick={() =>
+            onClick={() => {
+              if (!window.confirm('¿Estás seguro de que querés finalizar esta tarea? No se podrá revertir.')) return;
               handleAsyncAction(task, async () => {
                 const result = await completeTask(activeRecord.id)
                 return result
               })
-            }
+            }}
           >
             ✓ FINALIZAR
           </button>
@@ -138,12 +139,13 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-red-500 px-4 text-base font-bold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={pendingTaskId === task.id}
-            onClick={() =>
+            onClick={() => {
+              if (!window.confirm('¿Estás seguro? Se perderá el progreso de esta tarea.')) return;
               handleAsyncAction(task, async () => {
                 const result = await cancelTask(activeRecord.id)
                 return result
               })
-            }
+            }}
           >
             ✕ CANCELAR
           </button>
@@ -172,12 +174,13 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-blue-600 px-4 text-base font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={pendingTaskId === task.id}
-            onClick={() =>
+            onClick={() => {
+              if (!window.confirm('¿Estás seguro de que querés finalizar esta tarea? No se podrá revertir.')) return;
               handleAsyncAction(task, async () => {
                 const result = await completeTask(activeRecord.id)
                 return result
               })
-            }
+            }}
           >
             ✓ FINALIZAR
           </button>
@@ -186,12 +189,13 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-red-500 px-4 text-base font-bold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={pendingTaskId === task.id}
-            onClick={() =>
+            onClick={() => {
+              if (!window.confirm('¿Estás seguro? Se perderá el progreso de esta tarea.')) return;
               handleAsyncAction(task, async () => {
                 const result = await cancelTask(activeRecord.id)
                 return result
               })
-            }
+            }}
           >
             ✕ CANCELAR
           </button>
