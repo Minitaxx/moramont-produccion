@@ -75,7 +75,8 @@ export async function createWorkOrder(input: CreateWorkOrderInput) {
           await tx.workOrderTask.update({
             where: { id: createdTaskMap[task.order] },
             data: {
-              requiresTaskId: task.requiresTaskId,
+              // El formulario envía el "order" de la tarea previa; lo resolvemos al id real
+              requiresTaskId: createdTaskMap[Number(task.requiresTaskId)] ?? task.requiresTaskId,
               status: 'BLOCKED',
             },
           })
@@ -171,5 +172,23 @@ export async function listWorkOrders({
   } catch (e) {
     console.error('[listWorkOrders]', e)
     return { error: 'Error al listar órdenes de producción' }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getProductProcesses
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getProductProcesses(productId: string) {
+  try {
+    const processes = await prisma.manufacturingProcess.findMany({
+      where: { catalogProductId: productId },
+      orderBy: { order: 'asc' },
+      include: { processType: true },
+    })
+    return { ok: true as const, data: processes }
+  } catch (e) {
+    console.error('[getProductProcesses]', e)
+    return { error: 'Error al obtener procesos del producto' }
   }
 }

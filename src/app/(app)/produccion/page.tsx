@@ -1,23 +1,30 @@
-'use client'
+import Link from 'next/link'
+import CatalogView from './components/CatalogView'
 
-import { useState } from 'react'
-import ProductSelector from './components/ProductSelector'
-import ProcessManager from './components/ProcessManager'
-import { ProductCatalogItem } from '@/domains/production/types'
+const tabs = [
+  { label: 'Catálogo de productos', href: '/produccion' },
+  { label: 'Operarios', href: '/produccion/operarios' },
+  { label: 'Órdenes de trabajo', href: '/produccion/ordenes' },
+]
 
 export default function ProduccionPage() {
-  const [selectedProduct, setSelectedProduct] = useState<ProductCatalogItem | null>(null)
-
   return (
     <div className="space-y-6">
-      <div>
-        <p className="mb-1 text-sm text-gray-500">
-          {selectedProduct ? <span className="cursor-pointer hover:text-gray-700" onClick={() => setSelectedProduct(null)}>← Catálogo de productos</span> : 'Catálogo de productos'}
-        </p>
-        <h2 className="text-xl font-bold text-gray-900">{selectedProduct ? selectedProduct.name : 'Seleccionar producto'}</h2>
-        {selectedProduct && <p className="mt-1 text-sm text-gray-500">{selectedProduct.code} · {selectedProduct.geometryType} · {selectedProduct.productType}</p>}
-      </div>
-      {!selectedProduct ? <ProductSelector onSelect={setSelectedProduct} /> : <ProcessManager product={selectedProduct} onBack={() => setSelectedProduct(null)} />}
+      {/* Tabs de navegación interna */}
+      <nav className="flex gap-1 border-b border-gray-200">
+        {tabs.map((tab) => (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            className="rounded-t-md px-5 py-2.5 text-sm font-medium text-gray-500 transition hover:text-gray-900 aria-[current=page]:border-b-2 aria-[current=page]:border-gray-900 aria-[current=page]:text-gray-900"
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </nav>
+
+      {/* Contenido: catálogo */}
+      <CatalogView />
     </div>
   )
 }
