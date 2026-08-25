@@ -83,6 +83,25 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
       )
     }
 
+    const latestRecord = task.timeRecords?.[0]
+    if (latestRecord?.status === 'COMPLETED' && task.status !== 'COMPLETED') {
+      const otherOperators = task.assignedOperators
+        ?.filter((ao: any) => ao.operatorId !== operatorId)
+        ?.map((ao: any) => ao.operator?.name)
+        ?.join(', ') || 'otros operarios'
+
+      return (
+        <div className="mt-4">
+          <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+            Completado por vos
+          </span>
+          <p className="mt-2 text-sm text-gray-500 italic">
+            Esperando a: {otherOperators}
+          </p>
+        </div>
+      )
+    }
+
     if (!activeRecord) {
       return (
         <div className="mt-4 flex flex-wrap gap-3">
