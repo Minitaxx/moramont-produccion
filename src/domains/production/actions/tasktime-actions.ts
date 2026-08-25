@@ -16,16 +16,32 @@ export async function startTask({ taskId, operatorId }: { taskId: string; operat
     })
     if (!assignment) return { error: 'El operario no está asignado a esta tarea' }
 
-    // Obtener la tarea con su dependencia
+    // Obtener la tarea
     const task = await prisma.workOrderTask.findUnique({
       where: { id: taskId },
-      include: { requires: true, workOrder: true },
+      include: { workOrder: true },
     })
     if (!task) return { error: 'Tarea no encontrada' }
 
-    // Validar dependencia: la tarea requerida debe estar COMPLETED
-    if (task.requiresTaskId && task.requires?.status !== 'COMPLETED') {
-      return { error: 'La tarea previa debe estar completada antes de iniciar esta' }
+    // Validar "una sola tarea en curso" por operario
+    const activeElsewhere = await prisma.taskTimeRecord.findFirst({
+      where: { operatorId, status: 'IN_PROGRESS' },
+    })
+    if (activeElsewhere) {
+      return { error: 'Ya tiene una tarea en curso. Finalícela o cancélela primero.' }
+    }
+
+    // Validar dependencia por orden: ninguna tarea anterior del mismo workOrder sin completar
+    const blocker = await prisma.workOrderTask.findFirst({
+      where: {
+        workOrderId: task.workOrderId,
+        order: { lt: task.order },
+        status: { not: 'COMPLETED' },
+      },
+      orderBy: { order: 'desc' },
+    })
+    if (blocker) {
+      return { error: 'Esta tarea está bloqueada. Complete la tarea anterior primero.' }
     }
 
     // Verificar que no exista un record activo (IN_PROGRESS o PAUSED) para este par
@@ -70,7 +86,8 @@ export async function startTask({ taskId, operatorId }: { taskId: string; operat
       return newRecord
     })
 
-    return { ok: true as const, data: record }
+    // La tablet solo necesita confirmación (sin fechas ni objetos)
+    return { ok: true as const }
   } catch (e) {
     console.error('[startTask]', e)
     return { error: 'Error al iniciar la tarea' }
@@ -81,19 +98,12 @@ export async function startTask({ taskId, operatorId }: { taskId: string; operat
 // pauseTask
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function pauseTask({
-  recordId,
-  piecesAdvanced,
-  pauseReason,
-}: {
-  recordId: string
-  piecesAdvanced: number
-  pauseReason: string
-}) {
+export async function pauseTask({ recordId, pauseReason }: { recordId: string; pauseReason: string }) {
   try {
     if (!recordId) return { error: 'recordId es requerido' }
-    if (piecesAdvanced == null || piecesAdvanced < 0) return { error: 'piecesAdvanced debe ser un número mayor o igual a 0' }
-    if (!pauseReason?.trim()) return { error: 'El motivo de pausa es requerido' }
+    if (!pauseReason?.trim() || pauseReason.trim().length < 3) {
+      return { error: 'El motivo de pausa debe tener al menos 3 caracteres.' }
+    }
 
     const record = await prisma.taskTimeRecord.findUnique({ where: { id: recordId } })
     if (!record) return { error: 'Registro no encontrado' }
@@ -104,7 +114,6 @@ export async function pauseTask({
       data: {
         status: 'PAUSED',
         pausedAt: new Date(),
-        piecesAdvanced,
         pauseReason: pauseReason.trim(),
       },
     })
@@ -127,17 +136,22 @@ export async function resumeTask(recordId: string) {
     const record = await prisma.taskTimeRecord.findUnique({ where: { id: recordId } })
     if (!record) return { error: 'Registro no encontrado' }
     if (record.status !== 'PAUSED') return { error: 'El registro no está pausado' }
-    if (!record.pausedAt) return { error: 'El registro no tiene fecha de pausa' }
 
-    const pausedMs = Date.now() - record.pausedAt.getTime()
+    // Crear un NUEVO registro en curso; el pausado queda inmutable (trazabilidad)
+    await prisma.$transaction(async (tx) => {
+      await tx.taskTimeRecord.create({
+        data: {
+          workOrderTaskId: record.workOrderTaskId,
+          operatorId: record.operatorId,
+          status: 'IN_PROGRESS',
+          startedAt: new Date(),
+        },
+      })
 
-    await prisma.taskTimeRecord.update({
-      where: { id: recordId },
-      data: {
-        status: 'IN_PROGRESS',
-        pausedAt: null,
-        totalPausedMs: record.totalPausedMs + pausedMs,
-      },
+      await tx.workOrderTask.update({
+        where: { id: record.workOrderTaskId },
+        data: { status: 'IN_PROGRESS' },
+      })
     })
 
     return { ok: true as const }
@@ -151,7 +165,13 @@ export async function resumeTask(recordId: string) {
 // completeTask
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function completeTask(recordId: string) {
+export async function completeTask({
+  recordId,
+  piecesProduced,
+}: {
+  recordId: string
+  piecesProduced?: number
+}) {
   try {
     if (!recordId) return { error: 'recordId es requerido' }
 
@@ -189,6 +209,7 @@ export async function completeTask(recordId: string) {
           completedAt: now,
           pausedAt: null,
           totalPausedMs: record.totalPausedMs + additionalPausedMs,
+          ...(piecesProduced != null && piecesProduced > 0 ? { piecesProduced } : {}),
         },
       })
 
@@ -262,13 +283,12 @@ export async function cancelTask(recordId: string) {
       return { error: 'Solo se pueden cancelar registros en progreso o pausados' }
     }
 
+    // Nunca borrar startedAt: se preserva la trazabilidad
     await prisma.taskTimeRecord.update({
       where: { id: recordId },
       data: {
         status: 'CANCELLED',
         cancelledAt: new Date(),
-        startedAt: null,
-        pausedAt: null,
       },
     })
 

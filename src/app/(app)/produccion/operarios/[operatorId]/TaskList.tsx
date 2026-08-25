@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import PauseModal from '../components/PauseModal'
+import ConfirmModal from '../components/ConfirmModal'
 import {
   startTask,
   pauseTask,
@@ -12,112 +13,183 @@ import {
   cancelTask,
 } from '@/domains/production/actions/tasktime-actions'
 
-interface TaskListProps {
-  tasks: any[]
-  operatorId: string
+// ─────────────────────────────────────────────────────────────────────────────
+// Tipos (shape plano que viene del server)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type TaskItemStatus = 'PENDING' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'CANCELLED'
+
+export interface TaskItem {
+  id: string
+  workOrderCode: string
+  processTypeName: string
+  order: number
+  status: TaskItemStatus
+  isBlocked: boolean
+  requiresProcessName: string | null
+  quantityTotal: number
+  instructions: string | null
+  activeRecordId: string | null
+  myRecordStatus: 'NOT_STARTED' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'CANCELLED' | null
 }
 
+interface TaskListProps {
+  tasks: TaskItem[]
+  operatorId: string
+  operatorName: string
+}
+
+type ActionResult = { ok?: boolean; error?: string } | undefined
+
 const statusStyles: Record<string, string> = {
-  BLOCKED: 'bg-gray-100 text-gray-700',
   PENDING: 'bg-blue-100 text-blue-700',
   IN_PROGRESS: 'bg-green-100 text-green-700',
   PAUSED: 'bg-yellow-100 text-yellow-700',
 }
 
-export default function TaskList({ tasks, operatorId }: TaskListProps) {
+const statusLabels: Record<string, string> = {
+  PENDING: 'Pendiente',
+  IN_PROGRESS: 'En curso',
+  PAUSED: 'Pausada',
+}
+
+export default function TaskList({ tasks: initialTasks, operatorId, operatorName }: TaskListProps) {
   const router = useRouter()
 
+  // Estado local para actualizaciones optimistas
+  const [tasks, setTasks] = useState<TaskItem[]>(initialTasks)
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null)
   const [taskErrors, setTaskErrors] = useState<Record<string, string>>({})
-  const [pausingTask, setPausingTask] = useState<{ id: string; name: string } | null>(null)
 
-  const visibleTasks = useMemo(
-    () =>
-      tasks.filter((task: any) => {
-        if (task.status === 'COMPLETED') return false
-        return true
-      }),
-    [tasks],
-  )
+  // Modales
+  const [pausingTask, setPausingTask] = useState<TaskItem | null>(null)
+  const [completingTask, setCompletingTask] = useState<TaskItem | null>(null)
+  const [piecesProduced, setPiecesProduced] = useState('')
+  const [cancellingTask, setCancellingTask] = useState<TaskItem | null>(null)
 
-  const handleAsyncAction = async (
-    task: any,
-    action: () => Promise<{ error?: string; ok?: boolean } | undefined>,
-  ) => {
-    setPendingTaskId(task.id)
-    setTaskErrors(prev => {
+  // Sincronizar con props cuando el server refresca (comparación simple, sin flicker)
+  const lastSyncRef = useRef(JSON.stringify(initialTasks))
+  useEffect(() => {
+    const next = JSON.stringify(initialTasks)
+    if (lastSyncRef.current !== next) {
+      lastSyncRef.current = next
+      setTasks(initialTasks)
+    }
+  }, [initialTasks])
+
+  // Regla de UI: solo una tarea en curso a la vez
+  const hasActiveTask = tasks.some((t) => t.status === 'IN_PROGRESS')
+
+  // ── Ejecutor de acciones con actualización optimista ──────────────────────
+  async function runAction(
+    taskId: string,
+    optimistic: Partial<TaskItem>,
+    action: () => Promise<ActionResult>,
+  ) {
+    const prevTask = tasks.find((t) => t.id === taskId)
+    if (!prevTask) return
+
+    setPendingTaskId(taskId)
+    setTaskErrors((prev) => {
       const copy = { ...prev }
-      delete copy[task.id]
+      delete copy[taskId]
       return copy
     })
+
+    // Actualización optimista inmediata
+    setTasks((ts) => ts.map((t) => (t.id === taskId ? { ...t, ...optimistic } : t)))
 
     try {
       const result = await action()
 
       if (result?.error) {
-        setTaskErrors(prev => ({
+        // Revertir al estado anterior y mostrar el error inline
+        setTasks((ts) => ts.map((t) => (t.id === taskId ? prevTask : t)))
+        setTaskErrors((prev) => ({
           ...prev,
-          [task.id]: result.error || 'No se pudo completar la acción.',
+          [taskId]: result.error || 'No se pudo completar la acción.',
         }))
-        return
-      }
-
-      if (result?.ok === true) {
-        router.refresh()
+      } else {
+        // Sincronización de fondo con el server (trae los ids de registros nuevos)
+        await router.refresh()
       }
     } finally {
       setPendingTaskId(null)
     }
   }
 
-  const renderActionButtons = (task: any) => {
-    const activeRecord = task.timeRecords?.find(
-      (r: any) => r.status === 'IN_PROGRESS' || r.status === 'PAUSED',
+  // ── Handlers ───────────────────────────────────────────────────────────────
+  function handleStart(task: TaskItem) {
+    return runAction(
+      task.id,
+      { status: 'IN_PROGRESS', myRecordStatus: 'IN_PROGRESS' },
+      () => startTask({ taskId: task.id, operatorId }),
     )
+  }
 
-    if (task.status === 'BLOCKED') {
-      return (
-        <p className="mt-4 text-sm text-gray-600 italic">
-          Bloqueado: esperando {task.requires?.processType?.name}
-        </p>
-      )
-    }
+  function handleResume(task: TaskItem) {
+    if (!task.activeRecordId) return
+    const recordId = task.activeRecordId
+    return runAction(
+      task.id,
+      { status: 'IN_PROGRESS', myRecordStatus: 'IN_PROGRESS' },
+      () => resumeTask(recordId),
+    )
+  }
 
-    const latestRecord = task.timeRecords?.[0]
-    if (latestRecord?.status === 'COMPLETED' && task.status !== 'COMPLETED') {
-      const otherOperators = task.assignedOperators
-        ?.filter((ao: any) => ao.operatorId !== operatorId)
-        ?.map((ao: any) => ao.operator?.name)
-        ?.join(', ') || 'otros operarios'
+  function handleConfirmPause(pauseReason: string) {
+    const task = pausingTask
+    if (!task?.activeRecordId) return
+    const recordId = task.activeRecordId
+    setPausingTask(null)
+    return runAction(
+      task.id,
+      { status: 'PAUSED', myRecordStatus: 'PAUSED' },
+      () => pauseTask({ recordId, pauseReason }),
+    )
+  }
 
+  function handleConfirmComplete() {
+    const task = completingTask
+    if (!task?.activeRecordId) return
+    const recordId = task.activeRecordId
+    const parsedPieces = piecesProduced.trim() === '' ? undefined : Number(piecesProduced)
+    setCompletingTask(null)
+    setPiecesProduced('')
+    return runAction(
+      task.id,
+      { myRecordStatus: 'COMPLETED', activeRecordId: null },
+      () => completeTask({ recordId, piecesProduced: parsedPieces }),
+    )
+  }
+
+  function handleConfirmCancel() {
+    const task = cancellingTask
+    if (!task?.activeRecordId) return
+    const recordId = task.activeRecordId
+    setCancellingTask(null)
+    return runAction(
+      task.id,
+      { status: 'PENDING', activeRecordId: null, myRecordStatus: 'CANCELLED' },
+      () => cancelTask(recordId),
+    )
+  }
+
+  // ── Render de acciones por tarea ───────────────────────────────────────────
+  function renderActions(task: TaskItem) {
+    const isPending = pendingTaskId === task.id
+
+    // Bloqueada por secuencia (dato del server)
+    if (task.isBlocked && task.status === 'PENDING') {
       return (
         <div className="mt-4">
-          <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
-            Completado por vos
-          </span>
-          <p className="mt-2 text-sm text-gray-500 italic">
-            Esperando a: {otherOperators}
+          <p className="text-sm italic text-gray-600">
+            🔒 Bloqueado: esperando {task.requiresProcessName ?? 'la tarea anterior'}
           </p>
-        </div>
-      )
-    }
-
-    if (!activeRecord) {
-      return (
-        <div className="mt-4 flex flex-wrap gap-3">
           <button
             type="button"
-            className="h-14 min-w-[120px] rounded-xl bg-green-600 px-4 text-base font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={pendingTaskId === task.id}
-            onClick={() =>
-              handleAsyncAction(task, async () => {
-                const result = await startTask({
-                  taskId: task.id,
-                  operatorId,
-                })
-                return result
-              })
-            }
+            disabled
+            className="mt-3 h-14 min-w-[120px] cursor-not-allowed rounded-xl bg-gray-300 px-4 text-base font-bold text-white"
           >
             ▶ INICIAR TAREA
           </button>
@@ -125,16 +197,27 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
       )
     }
 
-    if (activeRecord.status === 'IN_PROGRESS') {
+    // Ya la completé yo; esperando al resto de operarios asignados
+    if (task.myRecordStatus === 'COMPLETED' && task.status !== 'COMPLETED') {
+      return (
+        <div className="mt-4">
+          <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+            Completado por vos
+          </span>
+          <p className="mt-2 text-sm italic text-gray-500">Esperando a otros operarios...</p>
+        </div>
+      )
+    }
+
+    // En curso
+    if (task.status === 'IN_PROGRESS') {
       return (
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-yellow-500 px-4 text-base font-bold text-white hover:bg-yellow-600 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={pendingTaskId === task.id}
-            onClick={() => {
-              setPausingTask({ id: task.id, name: task.processType?.name || 'Tarea' })
-            }}
+            disabled={isPending}
+            onClick={() => setPausingTask(task)}
           >
             ⏸ PAUSAR
           </button>
@@ -142,13 +225,10 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
           <button
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-blue-600 px-4 text-base font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={pendingTaskId === task.id}
+            disabled={isPending}
             onClick={() => {
-              if (!window.confirm('¿Estás seguro de que querés finalizar esta tarea? No se podrá revertir.')) return;
-              handleAsyncAction(task, async () => {
-                const result = await completeTask(activeRecord.id)
-                return result
-              })
+              setPiecesProduced('')
+              setCompletingTask(task)
             }}
           >
             ✓ FINALIZAR
@@ -157,14 +237,8 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
           <button
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-red-500 px-4 text-base font-bold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={pendingTaskId === task.id}
-            onClick={() => {
-              if (!window.confirm('¿Estás seguro? Se perderá el progreso de esta tarea.')) return;
-              handleAsyncAction(task, async () => {
-                const result = await cancelTask(activeRecord.id)
-                return result
-              })
-            }}
+            disabled={isPending}
+            onClick={() => setCancellingTask(task)}
           >
             ✕ CANCELAR
           </button>
@@ -172,19 +246,15 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
       )
     }
 
-    if (activeRecord.status === 'PAUSED') {
+    // Pausada
+    if (task.status === 'PAUSED') {
       return (
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-green-600 px-4 text-base font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={pendingTaskId === task.id}
-            onClick={() =>
-              handleAsyncAction(task, async () => {
-                const result = await resumeTask(activeRecord.id)
-                return result
-              })
-            }
+            disabled={isPending}
+            onClick={() => handleResume(task)}
           >
             ▶ REANUDAR
           </button>
@@ -192,13 +262,10 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
           <button
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-blue-600 px-4 text-base font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={pendingTaskId === task.id}
+            disabled={isPending}
             onClick={() => {
-              if (!window.confirm('¿Estás seguro de que querés finalizar esta tarea? No se podrá revertir.')) return;
-              handleAsyncAction(task, async () => {
-                const result = await completeTask(activeRecord.id)
-                return result
-              })
+              setPiecesProduced('')
+              setCompletingTask(task)
             }}
           >
             ✓ FINALIZAR
@@ -207,14 +274,8 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
           <button
             type="button"
             className="h-14 min-w-[120px] rounded-xl bg-red-500 px-4 text-base font-bold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={pendingTaskId === task.id}
-            onClick={() => {
-              if (!window.confirm('¿Estás seguro? Se perderá el progreso de esta tarea.')) return;
-              handleAsyncAction(task, async () => {
-                const result = await cancelTask(activeRecord.id)
-                return result
-              })
-            }}
+            disabled={isPending}
+            onClick={() => setCancellingTask(task)}
           >
             ✕ CANCELAR
           </button>
@@ -222,26 +283,39 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
       )
     }
 
-    return null
+    // Solo las PENDING llegan acá; el resto no muestra acciones
+    if (task.status !== 'PENDING') return null
+
+    // Iniciar, salvo que ya haya otra tarea en curso
+    const blockedByActive = hasActiveTask
+    return (
+      <div className="mt-4">
+        <button
+          type="button"
+          className="h-14 min-w-[120px] rounded-xl bg-green-600 px-4 text-base font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={isPending || blockedByActive}
+          onClick={() => handleStart(task)}
+        >
+          ▶ INICIAR TAREA
+        </button>
+        {blockedByActive && (
+          <p className="mt-2 text-xs text-gray-400">Ya hay una tarea en curso</p>
+        )}
+      </div>
+    )
   }
 
+  // ── Render principal ───────────────────────────────────────────────────────
   return (
     <div>
-      {visibleTasks.map((task: any) => {
-        const activeRecord = task.timeRecords?.find(
-          (r: any) => r.status === 'IN_PROGRESS' || r.status === 'PAUSED',
-        )
+      {operatorName && (
+        <p className="mb-4 text-sm text-gray-500">
+          Tareas de <span className="font-medium text-gray-700">{operatorName}</span>
+        </p>
+      )}
 
-        const statusLabel =
-          task.status === 'BLOCKED'
-            ? 'Bloqueado'
-            : task.status === 'PENDING'
-              ? 'Pendiente'
-              : task.status === 'IN_PROGRESS'
-                ? 'En curso'
-                : task.status === 'PAUSED'
-                  ? 'Pausada'
-                  : task.status
+      {tasks.map((task) => {
+        const statusLabel = statusLabels[task.status] ?? task.status
 
         return (
           <div
@@ -250,11 +324,11 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
           >
             <div className="flex items-start justify-between gap-3">
               <h3 className="text-lg font-bold text-gray-900">
-                {task.workOrder?.code} — {task.processType?.name}
+                {task.workOrderCode} — {task.processTypeName}
               </h3>
 
               <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[task.status] || 'bg-gray-100 text-gray-700'}`}
+                className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[task.status] || 'bg-gray-100 text-gray-700'}`}
               >
                 {statusLabel}
               </span>
@@ -268,7 +342,7 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
               Piezas: {task.quantityTotal}
             </p>
 
-            {renderActionButtons(task)}
+            {renderActions(task)}
 
             {taskErrors[task.id] ? (
               <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
@@ -279,44 +353,55 @@ export default function TaskList({ tasks, operatorId }: TaskListProps) {
         )
       })}
 
+      {/* Modal de pausa (solo motivo) */}
       <PauseModal
         isOpen={!!pausingTask}
         onClose={() => setPausingTask(null)}
-        onConfirm={async (piecesAdvanced, pauseReason) => {
-          if (!pausingTask) return
+        onConfirm={handleConfirmPause}
+        taskName={
+          pausingTask ? `${pausingTask.workOrderCode} — ${pausingTask.processTypeName}` : ''
+        }
+        isPending={!!pausingTask && pendingTaskId === pausingTask.id}
+      />
 
-          const task = visibleTasks.find((item: any) => item.id === pausingTask.id)
-          const activeRecord = task?.timeRecords?.find(
-            (r: any) => r.status === 'IN_PROGRESS' || r.status === 'PAUSED',
-          )
+      {/* Modal de finalización (con piezas producidas opcionales) */}
+      <ConfirmModal
+        isOpen={!!completingTask}
+        onClose={() => setCompletingTask(null)}
+        onConfirm={handleConfirmComplete}
+        title="Finalizar tarea"
+        description={
+          completingTask
+            ? `${completingTask.workOrderCode} — ${completingTask.processTypeName}`
+            : undefined
+        }
+        confirmText="Confirmar"
+        confirmVariant="primary"
+        isPending={!!completingTask && pendingTaskId === completingTask.id}
+      >
+        <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+          Piezas producidas (opcional)
+        </label>
+        <input
+          type="number"
+          min="0"
+          value={piecesProduced}
+          onChange={(e) => setPiecesProduced(e.target.value)}
+          className="mb-5 w-full rounded-xl border-2 border-gray-200 px-4 py-3 text-xl focus:border-blue-400 focus:outline-none"
+          placeholder="—"
+        />
+      </ConfirmModal>
 
-          if (!activeRecord) {
-            setPausingTask(null)
-            return
-          }
-
-          const result = await pauseTask({
-            recordId: activeRecord.id,
-            piecesAdvanced,
-            pauseReason,
-          })
-
-          setPausingTask(null)
-
-          if (result?.error) {
-            setTaskErrors(prev => ({
-              ...prev,
-              [pausingTask.id]: result.error,
-            }))
-            return
-          }
-
-          if (result?.ok === true) {
-            router.refresh()
-          }
-        }}
-        taskName={pausingTask?.name || ''}
-        isPending={false}
+      {/* Modal de cancelación */}
+      <ConfirmModal
+        isOpen={!!cancellingTask}
+        onClose={() => setCancellingTask(null)}
+        onConfirm={handleConfirmCancel}
+        title="¿Cancelar tarea?"
+        description="Esta acción no se puede deshacer."
+        confirmText="Sí, cancelar"
+        confirmVariant="danger"
+        isPending={!!cancellingTask && pendingTaskId === cancellingTask.id}
       />
     </div>
   )

@@ -2,14 +2,6 @@ import Link from 'next/link'
 import { getOperatorTasks, listOperators } from '@/domains/production/actions/operator-actions'
 import TaskList from './TaskList'
 
-const statusOrder: Record<string, number> = {
-  IN_PROGRESS: 0,
-  PAUSED: 1,
-  PENDING: 2,
-  BLOCKED: 3,
-  COMPLETED: 4,
-}
-
 export default async function OperatorPage({
   params,
 }: {
@@ -33,9 +25,8 @@ export default async function OperatorPage({
   const operator =
     'ok' in operatorsRes && operatorsRes.data ? operatorsRes.data.find((o) => o.id === operatorId) : null
 
-  const sorted = [...tasksRes.data].sort(
-    (a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9),
-  )
+  // Las tareas ya vienen ordenadas por order desde getOperatorTasks
+  const tasks = tasksRes.data
 
   return (
     <div className="space-y-5">
@@ -55,12 +46,16 @@ export default async function OperatorPage({
         </Link>
       </div>
 
-      {sorted.length === 0 ? (
+      {tasks.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-10 text-center text-gray-500">
           Este operario no tiene tareas asignadas.
         </div>
       ) : (
-        <TaskList tasks={sorted} operatorId={operatorId} />
+        <TaskList
+          tasks={tasks}
+          operatorId={operatorId}
+          operatorName={operator?.name ?? ''}
+        />
       )}
     </div>
   )

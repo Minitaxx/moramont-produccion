@@ -213,6 +213,10 @@ model TaskTimeRecord {
   piecesAdvanced Int?
   pauseReason    String?
 
+  // Piezas producidas al finalizar la tarea (opcional)
+  // TODO: correr `npx prisma db push` y `npx prisma generate` después de este cambio
+  piecesProduced Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
