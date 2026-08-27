@@ -20,6 +20,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { GripVertical } from 'lucide-react'
 
 import { createWorkOrder } from './actions'
 import {
@@ -143,17 +144,23 @@ function SortableTaskCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
+          {/* Drag handle exclusivo: solo este elemento recibe attributes/listeners */}
           <button
             type="button"
             {...attributes}
             {...listeners}
-            className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-700 active:cursor-grabbing"
+            className="shrink-0 touch-none cursor-grab rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 active:cursor-grabbing"
             title="Arrastrar para reordenar"
           >
-            {task.order}
+            <GripVertical size={20} />
           </button>
           <div>
-            <span className="font-bold text-gray-900">{task.processTypeName}</span>
+            <span className="flex items-center gap-2">
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-gray-100 px-2 text-xs font-bold text-gray-700">
+                {task.order}
+              </span>
+              <span className="font-bold text-gray-900">{task.processTypeName}</span>
+            </span>
             {refs.length > 0 && <p className="mt-0.5 text-xs text-gray-400">{refs.join(' · ')}</p>}
           </div>
         </div>
