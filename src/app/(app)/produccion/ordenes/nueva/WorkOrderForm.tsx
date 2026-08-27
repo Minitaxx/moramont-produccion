@@ -23,6 +23,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
 
 import { createWorkOrder } from './actions'
+import { getOrderEngineeringData } from '@/domains/production/actions/engineering-actions'
 import {
   getProductProcesses,
   listProcessTypes,
@@ -297,6 +298,9 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
   // Envío
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Autorrelleno por código de OP
+  const [isAutoFilling, setIsAutoFilling] = useState(false)
+
   // Procesos del producto seleccionado (cache)
   const [productProcesses, setProductProcesses] = useState<ProcessTemplate[] | null>(null)
   const [loadingProcesses, setLoadingProcesses] = useState(false)
@@ -335,7 +339,7 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
   }
 
   // ── A. Selección de producto ───────────────────────────────────────────────
-  function handleProductChange(value: string) {
+  function handleProductChange(value: string, explicitQty?: number) {
     setProductId(value || null)
     setTasks([])
     setFormError(null)
@@ -354,13 +358,42 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
       setLoadingProcesses(false)
       if ('ok' in res && res.ok) {
         setProductProcesses(res.data)
-        const qty = parseQuantityInt()
+        const qty = explicitQty ?? parseQuantityInt()
         setTasks(resequence(res.data.map((tpl) => templateToDraft(tpl, qty))))
       } else {
         setProductProcesses(null)
         setFormError('error' in res ? res.error : 'Error al cargar los procesos del producto.')
       }
     })
+  }
+
+  // ── A.2 Autorrelleno por código de OP (Ingeniería/Comercial) ────────────
+  async function handleCodeBlur() {
+    if (!code.trim() || isAutoFilling) return
+
+    setIsAutoFilling(true)
+    setFormError(null)
+    try {
+      const res = await getOrderEngineeringData(code.trim())
+
+      if (!('ok' in res)) {
+        setFormError(res.error)
+        return
+      }
+
+      const prod = products.find((p) => p.code === res.data.productCode)
+      if (!prod) {
+        setFormError(
+          `La OP "${code.trim()}" referencia un producto no disponible en el catálogo.`,
+        )
+        return
+      }
+
+      setQuantityTotal(String(res.data.quantity))
+      handleProductChange(prod.id, res.data.quantity)
+    } finally {
+      setIsAutoFilling(false)
+    }
   }
 
   // ── B/C. Mutaciones de tareas ──────────────────────────────────────────────
@@ -546,10 +579,14 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
               placeholder="OP-0826244"
               value={code}
               onChange={(e) => setCode(e.target.value)}
+              onBlur={handleCodeBlur}
               className={ctrl}
             />
             {fieldErrors.code && (
               <p className="mt-1 text-sm text-red-600">{fieldErrors.code}</p>
+            )}
+            {isAutoFilling && (
+              <p className="mt-1 text-sm text-blue-600">Buscando OP...</p>
             )}
           </div>
 
@@ -711,7 +748,7 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={isSubmitting}
+          disabled={isSubmitting || isAutoFilling}
           className="h-14 rounded-xl bg-blue-600 px-8 text-base font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? 'Guardando...' : 'GUARDAR'}
