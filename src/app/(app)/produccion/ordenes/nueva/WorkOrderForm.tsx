@@ -369,12 +369,19 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
 
   // ── A.2 Autorrelleno por código de OP (Ingeniería/Comercial) ────────────
   async function handleCodeBlur() {
-    if (!code.trim() || isAutoFilling) return
+    const requested = code.trim()
+    if (!requested || isAutoFilling) return
 
     setIsAutoFilling(true)
     setFormError(null)
     try {
-      const res = await getOrderEngineeringData(code.trim())
+      const res = await getOrderEngineeringData(requested)
+
+      // Si el código cambió (p. ej. se vació) mientras la consulta estaba
+      // pendiente, no propagar el autocompletado hacia el estado.
+      if (code.trim() !== requested) {
+        return
+      }
 
       if (!('ok' in res)) {
         setFormError(res.error)
@@ -384,7 +391,7 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
       const prod = products.find((p) => p.code === res.data.productCode)
       if (!prod) {
         setFormError(
-          `La OP "${code.trim()}" referencia un producto no disponible en el catálogo.`,
+          `La OP "${requested}" referencia un producto no disponible en el catálogo.`,
         )
         return
       }
@@ -393,6 +400,25 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
       handleProductChange(prod.id, res.data.quantity)
     } finally {
       setIsAutoFilling(false)
+    }
+  }
+
+  // ── A.3 Limpieza de estado al vaciar el código de OP ────────────────
+  function handleCodeChange(value: string) {
+    setCode(value)
+
+    // Si el código quedó vacío (o solo espacios), limpiar todo estado derivado
+    // de una consulta/autocompletado previo para no dejar datos huérfanos.
+    if (value.trim() === '') {
+      setTasks([])
+      setQuantityTotal('')
+      setProductId(null)
+      setProductProcesses(null)
+      setFormError(null)
+      setFieldErrors({})
+      setTaskErrors({})
+      setDeletingTempId(null)
+      setShowAddProcess(false)
     }
   }
 
@@ -578,7 +604,7 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
               type="text"
               placeholder="OP-0826244"
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={(e) => handleCodeChange(e.target.value)}
               onBlur={handleCodeBlur}
               className={ctrl}
             />

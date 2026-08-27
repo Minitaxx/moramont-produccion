@@ -1,58 +1,51 @@
-# Estado actual — Módulo de Producción
+# Estado actual — Módulo de Producción (ERP Moramount)
 
 ## Última sesión: 2026-08-27
 
 ### Commits de esta sesión (más reciente primero)
-
-- `bcc81b4` — feat(produccion): mejora drag and drop con handle exclusivo (GripVertical) y agrega reglas de IA
+- `097bc30` — feat(produccion): detalle de orden por OP y autorrelleno desde datos de ingenieria
+- `8c8e483e` — feat(produccion): mejora drag and drop con handle exclusivo (GripVertical) y reglas de IA
 - `857fecf4` — feat(produccion): drag and drop de tareas, seed de productos y categoria
-- `5d2731f` — feat(produccion): fase 3 formulario de creacion de ordenes con clonado de procesos
-- `b839117` — fix(produccion): pausa actualiza estado de tarea y cancel vuelve a pending
-- `48ade1b` — refactor(produccion): corrige flujo de tareas del operario en tablet
-- `4cc8d7a` — feat(produccion): agrega control de tiempos para ingenieros
 
 ### Qué se hizo en esta sesión
 
-1. **Estandarización del Método de Trabajo**:
-   - Creación de `GEMINI.md` en la raíz como fuente de verdad de roles y flujo, estandarizando las reglas de IA.
-2. **Fase 3 — Formulario de Órdenes (Drag & Drop y Catálogo)**:
-   - Implementación de reordenamiento drag & drop con `@dnd-kit` en `WorkOrderForm.tsx`.
-   - Fix de UX y bug de recarga: Handle exclusivo con `<GripVertical />` (`lucide-react`), prevención de submit de formulario asignando `type="button"` a todos los botones, y estilos `touch-none cursor-grab`.
-   - Nuevo componente `CatalogView` con selector visual de productos y `ProcessManager`.
-3. **Datos de prueba (Seed)**:
-   - Nuevo seed para productos `seedProducts(prisma)` que carga 3 productos reales (PANEL-CTRL-01, etc.) con sus secuencias de procesos, materiales y máquinas.
-4. **Seguridad y Repositorio**:
-   - Restauración del `.gitignore` para blindar credenciales (`.env`).
-   - Restauración de historial de migraciones (`prisma/migrations/`) y limpieza del working tree.
+1. **Corrección de Ruta y Vista de Detalle (`[id]`)**:
+   - Creación de la página dinámica `src/app/(app)/produccion/ordenes/[id]/page.tsx` para solucionar definitivamente el error 404 al hacer clic en "Ver" en el listado de órdenes.
+   - Server Component asíncrono utilizando `await params` (patrón Next 16) que invoca `getWorkOrderByCode(id)` filtrando por código de OP.
+   - Renderizado limpio de la información general de la orden, estado, badges reutilizados y listado de tareas ordenadas por dependencia y operarios asignados (ocultando los tiempos internos de tablet).
+
+2. **Simulación y Autorrelleno de Ingeniería/Comercial (`engineering-actions.ts`)**:
+   - Creación de la Server Action `getOrderEngineeringData(code)` que actúa como simulación determinística para mapear códigos de OP (ej. `OP-2608257`) hacia un producto válido del seed y una cantidad estimada.
+
+3. **Mejora del Formulario de Órdenes (`WorkOrderForm.tsx`)**:
+   - Refactorización de `handleProductChange` para aceptar cantidad explícita (`explicitQty`), evitando problemas de estado asíncrono.
+   - Implementación del evento `onBlur` en el input de *Código OP* que consulta automáticamente la acción de ingeniería, autocompleta el producto y la cantidad, y dispara el clonado instantáneo de tareas.
+   - Indicador visual *"Buscando OP..."* y bloqueo del botón **GUARDAR** mientras se procesa la consulta.
+
+4. **Control de Versiones**:
+   - Commits y sincronización completados exitosamente en la rama `main` mediante la terminal integrada de VS Code.
 
 ### Qué quedó pendiente
 
-- Validar visualmente el drag & drop con el nuevo ícono GripVertical.
-- Prevalidar campos adicionales en frontend (ej: materialId vacío al agregar).
-- Mejoras visuales menores en tablet: `active:scale-95` en botones, `animate-pulse` en badge `IN_PROGRESS`.
+- Conectar el backend real de comercial e ingeniería cuando se implementen dichos módulos previos.
+- Prevalidación adicional de campos vacíos en formularios (ej. materialId).
+- Mejoras visuales menores en tablet (`active:scale-95`, etc.).
 
-## Decisiones de diseño ya tomadas
+## Decisiones de diseño tomadas
 
-1. Secuencia de procesos: fija por producto, pero los tipos de proceso se reutilizan entre productos (modelo ProcessType maestro).
-2. Materiales: se usan los mismos del sistema principal (tabla Material existente).
-3. Tiempos: varían por producto, tamaño, geometría y material. El campo estimatedMinutes es el tiempo base de referencia.
-4. UI: línea gráfica idéntica al ERP principal MORAMONT.
-5. Validación de order duplicado: backend + frontend, errores inline en UI.
-6. Reordenamiento: drag & drop con recálculo automático de órdenes consecutivos desde 1.
-7. Errores: siempre inline, nunca alert() del navegador.
-8. Work Orders: una OP clona la secuencia de procesos del producto en tareas concretas.
-9. Tiempos ocultos en tablet: las Server Actions para operarios nunca devuelven fechas/horas.
-10. Optimistic updates: la UI cambia inmediatamente; si falla, revierte y muestra error inline.
-11. `resumeTask` crea un nuevo `TaskTimeRecord` (trazabilidad).
-12. `cancelTask` nunca borra `startedAt`.
+1. Secuencia de procesos fija por producto reutilizando tipos de procesos maestros.
+2. Autorrelleno por OP para evitar errores manuales y agilizar la creación de órdenes de trabajo en planta.
+3. El botón "Ver" de las órdenes utiliza directamente el código de OP (`code`) como segmento dinámico de la URL.
+4. Las Server Actions de operarios en tablet nunca exponen fechas ni marcas de tiempo individuales.
+5. Manejo de errores siempre en línea, prohibiendo el uso de `alert()` nativos del navegador.
 
-## Cómo correr este módulo en desarrollo
+## Cómo correr este proyecto en desarrollo
 
-1. cp .env.example .env
-2. Configurar DATABASE_URL apuntando a PostgreSQL local
-3. npm install
-4. npx prisma generate
-5. npx prisma db push --accept-data-loss
-6. npx tsx prisma/seed.ts
-7. npm run dev
-8. Abrir http://localhost:3000/produccion
+1. `cp .env.example .env`
+2. Configurar `DATABASE_URL` apuntando a PostgreSQL local
+3. `npm install`
+4. `npx prisma generate`
+5. `npx prisma db push --accept-data-loss`
+6. `npx tsx prisma/seed.ts`
+7. `npm run dev`
+8. Abrir `http://localhost:3000/produccion`
