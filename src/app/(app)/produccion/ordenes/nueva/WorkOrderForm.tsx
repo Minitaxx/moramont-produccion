@@ -3,6 +3,23 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 import { createWorkOrder } from './actions'
 import {
@@ -64,6 +81,194 @@ function resequence(list: DraftTask[]): DraftTask[] {
   return list.map((t, i) => ({ ...t, order: i + 1 }))
 }
 
+interface SortableTaskCardProps {
+  task: DraftTask
+  index: number
+  isFirst: boolean
+  isLast: boolean
+  onMoveUp: () => void
+  onMoveDown: () => void
+  onStartDelete: () => void
+  isDeleting: boolean
+  onConfirmDelete: () => void
+  onCancelDelete: () => void
+  operators: OperatorOption[]
+  onUpdateTask: (tempId: string, patch: Partial<DraftTask>) => void
+  onToggleOperator: (tempId: string, operatorId: string) => void
+  taskError?: string
+}
+
+function SortableTaskCard({
+  task,
+  index,
+  isFirst,
+  isLast,
+  onMoveUp,
+  onMoveDown,
+  onStartDelete,
+  isDeleting,
+  onConfirmDelete,
+  onCancelDelete,
+  operators,
+  onUpdateTask,
+  onToggleOperator,
+  taskError,
+}: SortableTaskCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.tempId,
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+  }
+
+  const refs: string[] = []
+  if (task.estimatedMinutes != null) refs.push(`${task.estimatedMinutes} min`)
+  if (task.machineName) refs.push(task.machineName)
+  if (task.materials.length > 0) {
+    refs.push(
+      task.materials.map((m) => `${m.materialName} (${m.quantity} ${m.unit})`).join(', '),
+    )
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`rounded-xl border-2 bg-white p-5 shadow-sm transition ${
+        isDragging ? 'border-blue-400 shadow-xl opacity-90' : 'border-gray-200'
+      } ${isDeleting ? 'border-red-300 bg-red-50/40' : ''}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-700 active:cursor-grabbing"
+            title="Arrastrar para reordenar"
+          >
+            {task.order}
+          </button>
+          <div>
+            <span className="font-bold text-gray-900">{task.processTypeName}</span>
+            {refs.length > 0 && <p className="mt-0.5 text-xs text-gray-400">{refs.join(' · ')}</p>}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={isFirst}
+            title="Subir"
+            className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            ⬆️
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={isLast}
+            title="Bajar"
+            className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            ⬇️
+          </button>
+
+          {isDeleting ? (
+            <span className="flex items-center gap-2">
+              <span className="text-sm font-medium text-red-600">¿Eliminar?</span>
+              <button
+                type="button"
+                onClick={onConfirmDelete}
+                className="rounded-lg bg-red-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-600"
+              >
+                Confirmar eliminar
+              </button>
+              <button
+                type="button"
+                onClick={onCancelDelete}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={onStartDelete}
+              title="Eliminar tarea"
+              className="rounded px-2 py-1 text-sm text-red-600 transition hover:text-red-800 hover:underline"
+            >
+              🗑️ Eliminar
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-1.5 block text-sm font-semibold text-gray-700">Cantidad *</label>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={task.quantityTotal}
+            onChange={(e) => onUpdateTask(task.tempId, { quantityTotal: Number(e.target.value) || 0 })}
+            className={ctrl}
+          />
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-semibold text-gray-700">Operarios</label>
+          <div className="flex flex-wrap gap-2">
+            {operators.length === 0 && (
+              <span className="text-sm text-gray-400">No hay operarios activos</span>
+            )}
+            {operators.map((op) => {
+              const checked = task.operatorIds.includes(op.id)
+              return (
+                <label
+                  key={op.id}
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition ${
+                    checked
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-blue-600"
+                    checked={checked}
+                    onChange={() => onToggleOperator(task.tempId, op.id)}
+                  />
+                  {op.name}
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <label className="mb-1.5 block text-sm font-semibold text-gray-700">Instrucciones</label>
+        <textarea
+          rows={2}
+          placeholder="Observaciones para el operario..."
+          value={task.instructions ?? ''}
+          onChange={(e) => onUpdateTask(task.tempId, { instructions: e.target.value })}
+          className={ctrl}
+        />
+      </div>
+
+      {taskError && <p className="mt-2 text-sm text-red-600">{taskError}</p>}
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Componente
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,6 +301,11 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
 
   // Confirmación inline de eliminación
   const [deletingTempId, setDeletingTempId] = useState<string | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   function parseQuantityInt(): number {
     const n = Number(quantityTotal)
@@ -183,6 +393,18 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
       const copy = { ...prev }
       delete copy[removedId]
       return copy
+    })
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    setTasks((prev) => {
+      const oldIndex = prev.findIndex((t) => t.tempId === active.id)
+      const newIndex = prev.findIndex((t) => t.tempId === over.id)
+      if (oldIndex === -1 || newIndex === -1) return prev
+      return resequence(arrayMove(prev, oldIndex, newIndex))
     })
   }
 
@@ -429,164 +651,38 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
             crear tareas manualmente.
           </div>
         ) : (
-          <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
-            {tasks.map((task, index) => {
-              const isDeleting = deletingTempId === task.tempId
-              const refs: string[] = []
-              if (task.estimatedMinutes != null) refs.push(`${task.estimatedMinutes} min`)
-              if (task.machineName) refs.push(task.machineName)
-              if (task.materials.length > 0) {
-                refs.push(
-                  task.materials
-                    .map((m) => `${m.materialName} (${m.quantity} ${m.unit})`)
-                    .join(', '),
-                )
-              }
-
-              return (
-                <div
-                  key={task.tempId}
-                  className={`rounded-xl border-2 bg-white p-5 shadow-sm transition ${
-                    isDeleting ? 'border-red-300 bg-red-50/40' : 'border-gray-200'
-                  }`}
-                >
-                  {/* Cabecera de la tarea */}
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-700">
-                        {task.order}
-                      </span>
-                      <div>
-                        <span className="font-bold text-gray-900">{task.processTypeName}</span>
-                        {refs.length > 0 && (
-                          <p className="mt-0.5 text-xs text-gray-400">{refs.join(' · ')}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Acciones: subir / bajar / eliminar con confirmación inline */}
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => moveTask(index, 'up')}
-                        disabled={index === 0}
-                        title="Subir"
-                        className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
-                      >
-                        ⬆️
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveTask(index, 'down')}
-                        disabled={index === tasks.length - 1}
-                        title="Bajar"
-                        className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 transition hover:border-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30"
-                      >
-                        ⬇️
-                      </button>
-
-                      {isDeleting ? (
-                        <span className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-red-600">¿Eliminar?</span>
-                          <button
-                            type="button"
-                            onClick={confirmDelete}
-                            className="rounded-lg bg-red-500 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-600"
-                          >
-                            Confirmar eliminar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeletingTempId(null)}
-                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                          >
-                            Cancelar
-                          </button>
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setDeletingTempId(task.tempId)}
-                          title="Eliminar tarea"
-                          className="rounded px-2 py-1 text-sm text-red-600 transition hover:text-red-800 hover:underline"
-                        >
-                          🗑️ Eliminar
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Campos editables */}
-                  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-                        Cantidad *
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={task.quantityTotal}
-                        onChange={(e) =>
-                          updateTask(task.tempId, { quantityTotal: Number(e.target.value) || 0 })
-                        }
-                        className={ctrl}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-                        Operarios
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {operators.length === 0 && (
-                          <span className="text-sm text-gray-400">No hay operarios activos</span>
-                        )}
-                        {operators.map((op) => {
-                          const checked = task.operatorIds.includes(op.id)
-                          return (
-                            <label
-                              key={op.id}
-                              className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition ${
-                                checked
-                                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 accent-blue-600"
-                                checked={checked}
-                                onChange={() => toggleOperator(task.tempId, op.id)}
-                              />
-                              {op.name}
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-                      Instrucciones
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="Observaciones para el operario..."
-                      value={task.instructions ?? ''}
-                      onChange={(e) => updateTask(task.tempId, { instructions: e.target.value })}
-                      className={ctrl}
-                    />
-                  </div>
-
-                  {taskErrors[task.tempId] && (
-                    <p className="mt-2 text-sm text-red-600">{taskErrors[task.tempId]}</p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={tasks.map((task) => task.tempId)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
+                {tasks.map((task, index) => (
+                  <SortableTaskCard
+                    key={task.tempId}
+                    task={task}
+                    index={index}
+                    isFirst={index === 0}
+                    isLast={index === tasks.length - 1}
+                    onMoveUp={() => moveTask(index, 'up')}
+                    onMoveDown={() => moveTask(index, 'down')}
+                    onStartDelete={() => setDeletingTempId(task.tempId)}
+                    isDeleting={deletingTempId === task.tempId}
+                    onConfirmDelete={confirmDelete}
+                    onCancelDelete={() => setDeletingTempId(null)}
+                    operators={operators}
+                    onUpdateTask={updateTask}
+                    onToggleOperator={toggleOperator}
+                    taskError={taskErrors[task.tempId]}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 
