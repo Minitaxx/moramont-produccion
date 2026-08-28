@@ -3,33 +3,20 @@
 ## Última sesión: 2026-08-27
 
 ### Commits de esta sesión (más reciente primero)
-- `097bc30` — feat(produccion): detalle de orden por OP y autorrelleno desde datos de ingenieria
-- `8c8e483e` — feat(produccion): mejora drag and drop con handle exclusivo (GripVertical) y reglas de IA
-- `857fecf4` — feat(produccion): drag and drop de tareas, seed de productos y categoria
+- `ec62fe1d` — feat(produccion): autorrelleno de OP desde cotizaciones reales del modulo comercial
+- `dd1dc8d` — feat(comercial): modelos Customer y Quote con relacion a WorkOrder, server actions y paginas CRUD iniciales
 
 ### Qué se hizo en esta sesión
-
-1. **Corrección de Ruta y Vista de Detalle (`[id]`)**:
-   - Creación de la página dinámica `src/app/(app)/produccion/ordenes/[id]/page.tsx` para solucionar definitivamente el error 404 al hacer clic en "Ver" en el listado de órdenes.
-   - Server Component asíncrono utilizando `await params` (patrón Next 16) que invoca `getWorkOrderByCode(id)` filtrando por código de OP.
-   - Renderizado limpio de la información general de la orden, estado, badges reutilizados y listado de tareas ordenadas por dependencia y operarios asignados (ocultando los tiempos internos de tablet).
-
-2. **Simulación y Autorrelleno de Ingeniería/Comercial (`engineering-actions.ts`)**:
-   - Creación de la Server Action `getOrderEngineeringData(code)` que actúa como simulación determinística para mapear códigos de OP (ej. `OP-2608257`) hacia un producto válido del seed y una cantidad estimada.
-
-3. **Mejora del Formulario de Órdenes (`WorkOrderForm.tsx`)**:
-   - Refactorización de `handleProductChange` para aceptar cantidad explícita (`explicitQty`), evitando problemas de estado asíncrono.
-   - Implementación del evento `onBlur` en el input de *Código OP* que consulta automáticamente la acción de ingeniería, autocompleta el producto y la cantidad, y dispara el clonado instantáneo de tareas.
-   - Indicador visual *"Buscando OP..."* y bloqueo del botón **GUARDAR** mientras se procesa la consulta.
-
-4. **Control de Versiones**:
-   - Commits y sincronización completados exitosamente en la rama `main` mediante la terminal integrada de VS Code.
+5. **Creación del Módulo Comercial**:
+   - Implementación de modelos `Customer` y `Quote` en el esquema de Prisma y sincronización.
+   - Creación de Server Actions y páginas CRUD para la gestión comercial.
+6. **Conexión Comercial - Producción**:
+   - Eliminación de la simulación de datos en el formulario de Órdenes de Trabajo.
+   - Autorrelleno funcional mediante consulta a la base de datos real.
 
 ### Qué quedó pendiente
-
-- Conectar el backend real de comercial e ingeniería cuando se implementen dichos módulos previos.
-- Prevalidación adicional de campos vacíos en formularios (ej. materialId).
-- Mejoras visuales menores en tablet (`active:scale-95`, etc.).
+- Fusionar la rama actual (`feature/modulo-comercial`) hacia `main`.
+- Desarrollar el apartado de Ingeniería/Diseño y subida de planos.
 
 ## Decisiones de diseño tomadas
 
