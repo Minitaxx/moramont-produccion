@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { listQuotes } from '@/domains/commercial/actions/quote-actions'
 import { listCustomers } from '@/domains/commercial/actions/customer-actions'
+import { listActiveProducts } from '@/domains/production/actions/product-actions'
 import CotizacionForm from './CotizacionForm'
 
 const quoteStatusStyles: Record<string, string> = {
@@ -18,7 +19,11 @@ const quoteStatusLabels: Record<string, string> = {
 }
 
 export default async function CotizacionesPage() {
-  const [quotesRes, customersRes] = await Promise.all([listQuotes(), listCustomers({ activeOnly: true })])
+  const [quotesRes, customersRes, productsRes] = await Promise.all([
+    listQuotes(),
+    listCustomers({ activeOnly: true }),
+    listActiveProducts(),
+  ])
 
   if ('error' in quotesRes) {
     return (
@@ -38,9 +43,19 @@ export default async function CotizacionesPage() {
       </div>
     )
   }
+  if ('error' in productsRes) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {productsRes.error}
+        </div>
+      </div>
+    )
+  }
 
   const quotes = quotesRes.data
   const customers = customersRes.data
+  const products = productsRes.data
 
   return (
     <div className="space-y-6">
@@ -55,7 +70,7 @@ export default async function CotizacionesPage() {
         <h2 className="text-xl font-bold text-gray-900">Cotizaciones</h2>
       </div>
 
-      <CotizacionForm customers={customers} />
+      <CotizacionForm customers={customers} products={products} />
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
         <table className="w-full text-sm">
@@ -68,6 +83,12 @@ export default async function CotizacionesPage() {
                 Cliente
               </th>
               <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Producto
+              </th>
+              <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Cantidad
+              </th>
+              <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Total
               </th>
               <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
@@ -78,7 +99,7 @@ export default async function CotizacionesPage() {
           <tbody className="divide-y divide-gray-100">
             {quotes.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-5 py-10 text-center text-gray-500">
+                <td colSpan={6} className="px-5 py-10 text-center text-gray-500">
                   No hay cotizaciones cargadas.
                 </td>
               </tr>
@@ -87,6 +108,8 @@ export default async function CotizacionesPage() {
                 <tr key={q.id} className="transition hover:bg-gray-50">
                   <td className="px-5 py-3 font-semibold text-gray-900">{q.code}</td>
                   <td className="px-5 py-3 text-gray-800">{q.customer?.name ?? '—'}</td>
+                  <td className="px-5 py-3 text-gray-800">{q.product?.name ?? '—'}</td>
+                  <td className="px-5 py-3 text-gray-600">{q.quantity ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">
                     ${Number(q.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                   </td>

@@ -46,7 +46,7 @@ export default async function ClientesPage() {
                 Teléfono
               </th>
               <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                CUIT/CUIL
+                RUC / DNI
               </th>
             </tr>
           </thead>

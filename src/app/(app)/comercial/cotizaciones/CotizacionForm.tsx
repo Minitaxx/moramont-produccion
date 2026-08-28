@@ -4,12 +4,26 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createQuote, type CreateQuoteInput } from '@/domains/commercial/actions/quote-actions'
 import type { Customer } from '@prisma/client'
+import type { ProductOption } from '@/domains/production/actions/product-actions'
+import QuickCustomerModal from './QuickCustomerModal'
+import QuickProductModal from './QuickProductModal'
 
 const ctrl =
   'w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100'
 
-export default function CotizacionForm({ customers }: { customers: Customer[] }) {
+interface CotizacionFormProps {
+  customers: Customer[]
+  products: ProductOption[]
+}
+
+export default function CotizacionForm({ customers, products }: CotizacionFormProps) {
   const router = useRouter()
+  // Listas locales: permiten agregar recursos creados vía Quick Create sin recargar
+  const [customerList, setCustomerList] = useState<Customer[]>(customers)
+  const [productList, setProductList] = useState<ProductOption[]>(products)
+  const [productId, setProductId] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [modal, setModal] = useState<null | 'customer' | 'product'>(null)
   const [form, setForm] = useState<{
     code: string
     customerId: string
@@ -19,6 +33,25 @@ export default function CotizacionForm({ customers }: { customers: Customer[] })
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Auto-cálculo del total si el producto tiene precio fijo (editable a mano)
+  function handleProductChange(value: string) {
+    setProductId(value)
+    const price = productList.find((p) => p.id === value)?.fixedPrice
+    const qty = parseInt(quantity, 10)
+    if (price != null && Number.isInteger(qty) && qty > 0) {
+      setForm((prev) => ({ ...prev, total: (price * qty).toFixed(2) }))
+    }
+  }
+
+  function handleQuantityChange(value: string) {
+    setQuantity(value)
+    const price = productList.find((p) => p.id === productId)?.fixedPrice
+    const qty = parseInt(value, 10)
+    if (price != null && Number.isInteger(qty) && qty > 0) {
+      setForm((prev) => ({ ...prev, total: (price * qty).toFixed(2) }))
+    }
+  }
+
   async function handleSubmit() {
     setError(null)
     setIsSubmitting(true)
@@ -26,6 +59,8 @@ export default function CotizacionForm({ customers }: { customers: Customer[] })
       const input: CreateQuoteInput = {
         code: form.code,
         customerId: form.customerId,
+        productId: productId || null,
+        quantity: quantity ? parseInt(quantity, 10) : null,
         total: parseFloat(form.total),
         notes: form.notes || null,
       }
@@ -36,6 +71,8 @@ export default function CotizacionForm({ customers }: { customers: Customer[] })
       }
       router.refresh()
       setForm({ code: '', customerId: '', total: '', notes: '' })
+      setProductId('')
+      setQuantity('')
     } finally {
       setIsSubmitting(false)
     }
@@ -63,18 +100,69 @@ export default function CotizacionForm({ customers }: { customers: Customer[] })
           <label className="mb-1.5 block text-sm font-semibold text-gray-700">
             Cliente *
           </label>
-          <select
-            value={form.customerId}
-            onChange={(e) => setForm({ ...form, customerId: e.target.value })}
+          <div className="flex items-center gap-2">
+            <select
+              value={form.customerId}
+              onChange={(e) => setForm({ ...form, customerId: e.target.value })}
+              className={ctrl}
+            >
+              <option value="">Seleccionar cliente...</option>
+              {customerList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setModal('customer')}
+              title="Crear nuevo cliente"
+              className="shrink-0 rounded-xl border-2 border-gray-200 px-3 py-3 text-sm font-semibold text-blue-600 transition hover:border-blue-300 hover:bg-blue-50"
+            >
+              + Nuevo
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+            Producto
+          </label>
+          <div className="flex items-center gap-2">
+            <select
+              value={productId}
+              onChange={(e) => handleProductChange(e.target.value)}
+              className={ctrl}
+            >
+              <option value="">Seleccionar producto...</option>
+              {productList.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.code} — {p.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setModal('product')}
+              title="Crear nuevo producto"
+              className="shrink-0 rounded-xl border-2 border-gray-200 px-3 py-3 text-sm font-semibold text-blue-600 transition hover:border-blue-300 hover:bg-blue-50"
+            >
+              + Nuevo
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-semibold text-gray-700">
+            Cantidad
+          </label>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={quantity}
+            onChange={(e) => handleQuantityChange(e.target.value)}
             className={ctrl}
-          >
-            <option value="">Seleccionar cliente...</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            placeholder="Ej: 10"
+          />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-semibold text-gray-700">
@@ -118,6 +206,27 @@ export default function CotizacionForm({ customers }: { customers: Customer[] })
           {isSubmitting ? 'Guardando...' : 'Crear cotización'}
         </button>
       </div>
+
+      {modal === 'customer' && (
+        <QuickCustomerModal
+          onClose={() => setModal(null)}
+          onCreated={(c) => {
+            setCustomerList((prev) => [...prev, c])
+            setForm((f) => ({ ...f, customerId: c.id }))
+            setModal(null)
+          }}
+        />
+      )}
+      {modal === 'product' && (
+        <QuickProductModal
+          onClose={() => setModal(null)}
+          onCreated={(p) => {
+            setProductList((prev) => [...prev, p])
+            setProductId(p.id)
+            setModal(null)
+          }}
+        />
+      )}
     </div>
   )
 }

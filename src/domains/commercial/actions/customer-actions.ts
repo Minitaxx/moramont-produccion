@@ -68,7 +68,7 @@ export async function createCustomer(input: CreateCustomerInput) {
   } catch (e) {
     // Violación de unicidad de email/taxId
     if (e instanceof Error && e.message.includes('Unique constraint')) {
-      return { error: 'Ya existe un cliente con ese email o CUIT/CUIL.' }
+      return { error: 'Ya existe un cliente con ese email o RUC/DNI.' }
     }
     console.error('[createCustomer]', e)
     return { error: 'Error al crear el cliente' }

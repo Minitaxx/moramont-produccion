@@ -74,17 +74,17 @@ export default function ClienteForm() {
             value={form.phone ?? ''}
             onChange={(e) => update('phone', e.target.value)}
             className={ctrl}
-            placeholder="+54 11 ..."
+            placeholder="+51 987 654 321"
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-sm font-semibold text-gray-700">CUIT/CUIL</label>
+          <label className="mb-1.5 block text-sm font-semibold text-gray-700">RUC / DNI</label>
           <input
             type="text"
             value={form.taxId ?? ''}
             onChange={(e) => update('taxId', e.target.value)}
             className={ctrl}
-            placeholder="20-12345678-9"
+            placeholder="20123456789 / 41234567"
           />
         </div>
         <div>
