@@ -18,6 +18,7 @@ interface CreateWorkOrderInput {
   code: string
   productId: string
   quantityTotal: number
+  quoteId?: string | null
   tasks: CreateWorkOrderTaskInput[]
 }
 
@@ -61,12 +62,21 @@ export async function createWorkOrder(
       const existing = await tx.workOrder.findUnique({ where: { code } })
       if (existing) throw new Error('DUPLICATE_CODE')
 
+      // Integridad: si viene quoteId, verificar que la cotización exista
+      let validQuoteId: string | null = null
+      if (data.quoteId) {
+        const quote = await tx.quote.findUnique({ where: { id: data.quoteId }, select: { id: true } })
+        if (!quote) throw new Error('QUOTE_NOT_FOUND')
+        validQuoteId = quote.id
+      }
+
       // Crear la WorkOrder
       const order = await tx.workOrder.create({
         data: {
           code,
           productId: data.productId,
           quantityTotal: data.quantityTotal,
+          quoteId: validQuoteId,
           status: 'PENDING',
         },
       })
@@ -113,6 +123,9 @@ export async function createWorkOrder(
   } catch (e) {
     if (e instanceof Error && e.message === 'DUPLICATE_CODE') {
       return { error: 'Ya existe una orden con ese código.' }
+    }
+    if (e instanceof Error && e.message === 'QUOTE_NOT_FOUND') {
+      return { error: 'La cotización asociada no existe.' }
     }
     console.error('[createWorkOrder]', e)
     return { error: 'Error al crear la orden de producción.' }

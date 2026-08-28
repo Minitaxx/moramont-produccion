@@ -301,6 +301,9 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
   // Autorrelleno por código de OP
   const [isAutoFilling, setIsAutoFilling] = useState(false)
 
+  // Cotización (Quote) de la que se autorrellenó el formulario
+  const [quoteId, setQuoteId] = useState<string | null>(null)
+
   // Procesos del producto seleccionado (cache)
   const [productProcesses, setProductProcesses] = useState<ProcessTemplate[] | null>(null)
   const [loadingProcesses, setLoadingProcesses] = useState(false)
@@ -347,6 +350,8 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
     setTaskErrors({})
     setDeletingTempId(null)
     setShowAddProcess(false)
+    // Seleccionar producto a mano desvincula de la cotización autorrellenada
+    setQuoteId(null)
 
     if (!value) {
       setProductProcesses(null)
@@ -388,14 +393,15 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
         return
       }
 
-      const prod = products.find((p) => p.code === res.data.productCode)
+      const prod = products.find((p) => p.id === res.data.productId)
       if (!prod) {
         setFormError(
-          `La OP "${requested}" referencia un producto no disponible en el catálogo.`,
+          `El producto de la cotización "${requested}" no está disponible en el catálogo.`,
         )
         return
       }
 
+      setQuoteId(res.data.quoteId)
       setQuantityTotal(String(res.data.quantity))
       handleProductChange(prod.id, res.data.quantity)
     } finally {
@@ -414,6 +420,7 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
       setQuantityTotal('')
       setProductId(null)
       setProductProcesses(null)
+      setQuoteId(null)
       setFormError(null)
       setFieldErrors({})
       setTaskErrors({})
@@ -568,6 +575,7 @@ export default function WorkOrderForm({ products, operators }: WorkOrderFormProp
         code: code.trim(),
         productId: productId as string,
         quantityTotal: Number(quantityTotal),
+        quoteId,
         tasks: tasks.map((t) => ({
           processTypeId: t.processTypeId,
           order: t.order,

@@ -1,16 +1,16 @@
 'use server'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Simulación de datos de Ingeniería/Comercial
-// ─────────────────────────────────────────────────────────────────────────────
-// TODO: reemplazar por la consulta real al backend de comercial/ingeniería.
-// Actualmente devuelve de forma determinística un productCode perteneciente
-// al seed (productos cargados) y una cantidad derivada del código de la OP.
+import { prisma } from '@/lib/prisma'
 
-const SEED_PRODUCT_CODES = ['PANEL-CTRL-01', 'CARCASA-SRV-01', 'SOPORTE-MNT-01']
+// ─────────────────────────────────────────────────────────────────────────────
+// Datos de Ingeniería/Comercial desde Cotizaciones (Quote) reales
+// ─────────────────────────────────────────────────────────────────────────────
+// Consulta una cotización por código y devuelve los datos necesarios para
+// autorrellenar la creación de una orden de trabajo (producto + cantidad).
 
 export interface OrderEngineeringData {
-  productCode: string
+  quoteId: string
+  productId: string
   quantity: number
 }
 
@@ -23,21 +23,34 @@ export async function getOrderEngineeringData(
     return { error: 'El código de OP es requerido.' }
   }
 
-  // Derivar de forma estable el número interno del código (ej: OP-2608257 -> 2608257)
-  const numericPart = trimmed.match(/\d+$/)?.[0]
-  const numeric = numericPart ? parseInt(numericPart, 10) : 0
+  try {
+    const quote = await prisma.quote.findUnique({
+      where: { code: trimmed },
+      include: { product: true },
+    })
 
-  // Elegir un producto del seed de forma determinística según el número
-  const productCode =
-    SEED_PRODUCT_CODES[
-      numeric % SEED_PRODUCT_CODES.length
-    ]
+    if (!quote) {
+      return { error: `No se encontró una cotización con el código "${trimmed}".` }
+    }
 
-  // Cantidad derivada del código: rango estable 20..119
-  const quantity = numeric > 0 ? 20 + (numeric % 100) : 50
+    if (!quote.productId || !quote.product) {
+      return { error: `La cotización "${trimmed}" no tiene un producto asociado.` }
+    }
 
-  return {
-    ok: true,
-    data: { productCode, quantity },
+    if (quote.quantity == null || quote.quantity <= 0) {
+      return { error: `La cotización "${trimmed}" no define una cantidad válida.` }
+    }
+
+    return {
+      ok: true,
+      data: {
+        quoteId: quote.id,
+        productId: quote.productId,
+        quantity: quote.quantity,
+      },
+    }
+  } catch (e) {
+    console.error('[getOrderEngineeringData]', e)
+    return { error: 'Error al consultar la cotización.' }
   }
 }
